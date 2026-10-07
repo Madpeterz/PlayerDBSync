@@ -1,11 +1,12 @@
 name: Release
 
-# Push a tag like v1.2.3 to build PlayerDBSync.exe and publish it as a GitHub release.
-# Tags with a suffix (v1.2.3-beta) are marked as pre-releases.
+# Push a tag like 1.2.3 (or v1.2.3) to build PlayerDBSync.exe and publish it as a GitHub release.
+# Tags with a suffix (1.2.3-beta) are marked as pre-releases.
 on:
   push:
     tags:
-      - "v*"
+      - "v[0-9]*"
+      - "[0-9]*"
 
 permissions:
   contents: write
