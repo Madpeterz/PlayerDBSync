@@ -13,15 +13,15 @@ namespace PlayerDBSync
     internal readonly record struct SyncResult(int Uploaded, bool StateChanged, string? Error);
 
     /// <summary>
-    ///  Scans a Players folder for changed *.dat files and pushes them to the PlayerDB API in batches.
+    ///  Scans a folder (PlayerDB Players or HomeDB Houses) for changed *.dat files and pushes them to an API endpoint in batches.
     /// </summary>
-    internal sealed class PlayerUploader
+    internal sealed class DatUploader
     {
         private const int MaxBatchSize = 500;
 
         private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(100) };
 
-        // Files in the Players folder that aren't player records.
+        // Bookkeeping files the addons keep next to their records.
         private static readonly HashSet<string> IgnoredFiles = new(StringComparer.OrdinalIgnoreCase) { "_count.dat" };
 
         private readonly Action<string> _log;
@@ -40,7 +40,7 @@ namespace PlayerDBSync
 
         private enum PushOutcome { Success, Rejected, ServerError }
 
-        public PlayerUploader(Action<string> log)
+        public DatUploader(Action<string> log)
         {
             _log = log;
         }

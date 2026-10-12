@@ -6,30 +6,54 @@ namespace PlayerDBSync
         private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(30);
 
         private readonly AppSettings _settings = AppSettings.Load();
-        private readonly PlayerUploader _uploader;
+        private readonly SyncJob _players;
+        private readonly SyncJob _homes;
         private CancellationTokenSource? _cts;
-        private bool _syncing;
 
-        // Backoff state while the server (or folder) is failing.
-        private int _failureCount;
-        private DateTime _nextAttempt = DateTime.MinValue;
-        private string? _lastError;
-
-        // Snapshot of the inputs taken when sync starts, so edits to the boxes don't affect a running sync.
-        private string _folder = "";
-        private string _url = "";
+        // Snapshot of the credentials taken when sync starts, so edits to the boxes don't affect a running sync.
         private long _userId;
         private string _apiKey = "";
+
+        /// <summary>
+        ///  One folder pushed to one API endpoint on its own timer, with its own backoff,
+        ///  so a failing endpoint doesn't hold up the other.
+        /// </summary>
+        private sealed class SyncJob(string name, string endpointPath, System.Windows.Forms.Timer timer,
+            DatUploader uploader, Dictionary<string, SyncRecord> syncedFiles)
+        {
+            public string Name { get; } = name;
+            public string EndpointPath { get; } = endpointPath;
+            public System.Windows.Forms.Timer Timer { get; } = timer;
+            public DatUploader Uploader { get; } = uploader;
+            public Dictionary<string, SyncRecord> SyncedFiles { get; } = syncedFiles;
+
+            // Taken when sync starts. An empty Folder means this job is skipped.
+            public string Folder { get; set; } = "";
+            public string Url { get; set; } = "";
+            public bool Enabled => Folder.Length > 0;
+
+            public bool Syncing { get; set; }
+            public string Status { get; set; } = "";
+
+            // Backoff state while the server (or folder) is failing.
+            public int FailureCount { get; set; }
+            public DateTime NextAttempt { get; set; } = DateTime.MinValue;
+            public string? LastError { get; set; }
+        }
+
+        private IEnumerable<SyncJob> Jobs => [_players, _homes];
 
         public Form1()
         {
             InitializeComponent();
-            _uploader = new PlayerUploader(Log);
+            _players = new SyncJob("Players", "/api/players", syncTimer, new DatUploader(m => Log($"Players: {m}")), _settings.SyncedFiles);
+            _homes = new SyncJob("Homes", "/api/homes", homesTimer, new DatUploader(m => Log($"Homes: {m}")), _settings.HomeSyncedFiles);
         }
 
         private void Form1_Load(object? sender, EventArgs e)
         {
             txtFolder.Text = _settings.Folder;
+            txtHomeFolder.Text = _settings.HomeFolder;
             txtUrl.Text = _settings.Url;
             txtUserId.Text = _settings.UserId;
             txtApiKey.Text = _settings.GetApiKey();
@@ -39,7 +63,11 @@ namespace PlayerDBSync
         {
             // Resume syncing automatically when a previous run left complete settings;
             // otherwise wait for the user to fill them in and press Start.
-            if (Directory.Exists(txtFolder.Text.Trim())
+            var players = txtFolder.Text.Trim();
+            var home = txtHomeFolder.Text.Trim();
+            if ((players.Length > 0 || home.Length > 0)
+                && (players.Length == 0 || IsAddonFolder(players, AppSettings.PlayersFolder))
+                && (home.Length == 0 || IsAddonFolder(home, AppSettings.HousesFolder))
                 && txtUrl.Text.Trim().Length > 0
                 && long.TryParse(txtUserId.Text.Trim(), out var id) && id > 0
                 && txtApiKey.Text.Length > 0)
@@ -50,15 +78,39 @@ namespace PlayerDBSync
 
         private void btnBrowse_Click(object? sender, EventArgs e)
         {
+            BrowseAddonFolder(txtFolder, "PlayerDB", AppSettings.PlayersFolder, AppSettings.DefaultFolder);
+        }
+
+        private void btnBrowseHome_Click(object? sender, EventArgs e)
+        {
+            BrowseAddonFolder(txtHomeFolder, "HomeDB", AppSettings.HousesFolder, "");
+        }
+
+        private void BrowseAddonFolder(TextBox box, string addonName, string dataFolder, string fallback)
+        {
             using var dialog = new FolderBrowserDialog
             {
-                Description = "Select the PlayerDB Players folder",
+                Description = $"Select the {addonName} addon folder (the one containing {AppSettings.AddonMarkerFile})",
                 UseDescriptionForTitle = true,
-                SelectedPath = Directory.Exists(txtFolder.Text) ? txtFolder.Text : AppSettings.DefaultFolder,
+                SelectedPath = Directory.Exists(box.Text) ? box.Text : fallback,
             };
-            if (dialog.ShowDialog(this) == DialogResult.OK)
+            if (dialog.ShowDialog(this) != DialogResult.OK)
             {
-                txtFolder.Text = dialog.SelectedPath;
+                return;
+            }
+
+            var path = dialog.SelectedPath;
+            // Picking the data folder itself is an easy slip; use the addon folder above it.
+            var parent = Path.GetDirectoryName(path);
+            if (!IsAddonFolder(path, dataFolder) && string.Equals(Path.GetFileName(path), dataFolder, StringComparison.OrdinalIgnoreCase)
+                && parent != null && IsAddonFolder(parent, dataFolder))
+            {
+                path = parent;
+            }
+            box.Text = path;
+            if (!IsAddonFolder(path, dataFolder))
+            {
+                ShowError(NotAddonMessage(path, addonName, dataFolder), box);
             }
         }
 
@@ -77,49 +129,77 @@ namespace PlayerDBSync
 
             SaveSettings();
 
-            var target = $"{_folder}|{_url}|{_userId}";
-            if (!string.Equals(_settings.SyncTarget, target, StringComparison.OrdinalIgnoreCase))
-            {
-                // Different folder/server/user: everything needs to be pushed again.
-                _settings.SyncedFiles.Clear();
-                _settings.SyncTarget = target;
-            }
-            _uploader.ResetCache();
-            _failureCount = 0;
-            _nextAttempt = DateTime.MinValue;
-            _lastError = null;
+            _settings.SyncTarget = Retarget(_players, _settings.SyncTarget);
+            _settings.HomeSyncTarget = Retarget(_homes, _settings.HomeSyncTarget);
 
             _cts = new CancellationTokenSource();
             SetInputsEnabled(false);
             btnStart.Text = "Stop";
-            Log($"Watching {_folder} (checking every {TimeSpan.FromMilliseconds(syncTimer.Interval).TotalMinutes:0.#} min)");
+            foreach (var job in Jobs)
+            {
+                job.Uploader.ResetCache();
+                job.FailureCount = 0;
+                job.NextAttempt = DateTime.MinValue;
+                job.LastError = null;
+                job.Status = "";
+                if (job.Enabled)
+                {
+                    Log($"{job.Name}: watching {job.Folder} (checking every {TimeSpan.FromMilliseconds(job.Timer.Interval).TotalMinutes:0.#} min)");
+                }
+            }
 
-            await RunSyncAsync();
+            await Task.WhenAll(RunSyncAsync(_players), RunSyncAsync(_homes));
             if (_cts != null)
             {
-                syncTimer.Start();
+                foreach (var job in Jobs.Where(j => j.Enabled))
+                {
+                    job.Timer.Start();
+                }
             }
+        }
+
+        /// <summary>
+        ///  The sync target <paramref name="job"/> will record against. If the folder, endpoint or user changed,
+        ///  its records are cleared so everything is pushed again. A skipped job keeps its old records and target.
+        /// </summary>
+        private string Retarget(SyncJob job, string oldTarget)
+        {
+            if (!job.Enabled)
+            {
+                return oldTarget;
+            }
+            var target = $"{job.Folder}|{job.Url}|{_userId}";
+            if (!string.Equals(oldTarget, target, StringComparison.OrdinalIgnoreCase))
+            {
+                job.SyncedFiles.Clear();
+            }
+            return target;
         }
 
         private async void syncTimer_Tick(object? sender, EventArgs e)
         {
-            await RunSyncAsync();
+            await RunSyncAsync(_players);
         }
 
-        private async Task RunSyncAsync()
+        private async void homesTimer_Tick(object? sender, EventArgs e)
+        {
+            await RunSyncAsync(_homes);
+        }
+
+        private async Task RunSyncAsync(SyncJob job)
         {
             // Small tolerance so timer jitter doesn't push a retry out by a whole extra tick.
-            if (_syncing || _cts == null || DateTime.Now + TimeSpan.FromSeconds(1) < _nextAttempt)
+            if (job.Syncing || _cts == null || !job.Enabled || DateTime.Now + TimeSpan.FromSeconds(1) < job.NextAttempt)
             {
                 return;
             }
 
-            _syncing = true;
+            job.Syncing = true;
             var ct = _cts.Token;
-            lblStatus.Text = "Checking for changes…";
+            SetStatus(job, "Checking for changes…");
             try
             {
-                var result = await _uploader.SyncAsync(_folder, _url, _userId, _apiKey, _settings.SyncedFiles, ct);
+                var result = await job.Uploader.SyncAsync(job.Folder, job.Url, _userId, _apiKey, job.SyncedFiles, ct);
                 if (result.StateChanged)
                 {
                     SaveSettings();
@@ -127,11 +207,11 @@ namespace PlayerDBSync
 
                 if (result.Error == null)
                 {
-                    OnSyncSucceeded();
+                    OnSyncSucceeded(job);
                 }
                 else
                 {
-                    OnSyncFailed(result.Error);
+                    OnSyncFailed(job, result.Error);
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -139,50 +219,63 @@ namespace PlayerDBSync
             }
             catch (Exception ex)
             {
-                OnSyncFailed($"Sync error: {ex.Message}");
+                OnSyncFailed(job, $"Sync error: {ex.Message}");
             }
             finally
             {
-                _syncing = false;
+                job.Syncing = false;
             }
         }
 
-        private void OnSyncSucceeded()
+        private void OnSyncSucceeded(SyncJob job)
         {
-            if (_failureCount > 0)
+            if (job.FailureCount > 0)
             {
-                Log("Connection restored");
+                Log($"{job.Name}: connection restored");
             }
-            _failureCount = 0;
-            _nextAttempt = DateTime.MinValue;
-            _lastError = null;
-            lblStatus.Text = $"Last checked {DateTime.Now:T}";
+            job.FailureCount = 0;
+            job.NextAttempt = DateTime.MinValue;
+            job.LastError = null;
+            SetStatus(job, $"Last checked {DateTime.Now:T}");
         }
 
-        private void OnSyncFailed(string error)
+        private void OnSyncFailed(SyncJob job, string error)
         {
-            _failureCount++;
+            job.FailureCount++;
 
             // 5m, 10m, 20m, then capped at 30m.
-            var delay = TimeSpan.FromMilliseconds(syncTimer.Interval * Math.Pow(2, Math.Min(_failureCount - 1, 10)));
+            var delay = TimeSpan.FromMilliseconds(job.Timer.Interval * Math.Pow(2, Math.Min(job.FailureCount - 1, 10)));
             if (delay > MaxBackoff)
             {
                 delay = MaxBackoff;
             }
-            _nextAttempt = DateTime.Now + delay;
+            job.NextAttempt = DateTime.Now + delay;
 
             // Only log when the error changes; repeats just update the status line.
-            if (error != _lastError)
+            if (error != job.LastError)
             {
-                Log($"{error} – retrying with backoff");
-                _lastError = error;
+                Log($"{job.Name}: {error} – retrying with backoff");
+                job.LastError = error;
             }
-            lblStatus.Text = $"Failing ({_failureCount}x) – next try {_nextAttempt:T}";
+            SetStatus(job, $"Failing ({job.FailureCount}x) – next try {job.NextAttempt:T}");
+        }
+
+        private void SetStatus(SyncJob job, string status)
+        {
+            if (_cts == null)
+            {
+                return;
+            }
+            job.Status = status;
+            lblStatus.Text = string.Join(Environment.NewLine, Jobs.Where(j => j.Enabled).Select(j => $"{j.Name}: {j.Status}"));
         }
 
         private void StopSync()
         {
-            syncTimer.Stop();
+            foreach (var job in Jobs)
+            {
+                job.Timer.Stop();
+            }
             _cts?.Cancel();
             _cts?.Dispose();
             _cts = null;
@@ -194,14 +287,26 @@ namespace PlayerDBSync
 
         private bool ValidateInputs()
         {
-            var folder = txtFolder.Text.Trim();
-            if (!Directory.Exists(folder))
+            // Either folder may be left empty to skip that sync, but not both.
+            var playersFolder = txtFolder.Text.Trim();
+            var homeFolder = txtHomeFolder.Text.Trim();
+            if (playersFolder.Length == 0 && homeFolder.Length == 0)
             {
-                ShowError($"Folder not found:\n{folder}", txtFolder);
+                ShowError("Select a PlayerDB or HomeDB addon folder to sync.", txtFolder);
+                return false;
+            }
+            if (playersFolder.Length > 0 && !IsAddonFolder(playersFolder, AppSettings.PlayersFolder))
+            {
+                ShowError(NotAddonMessage(playersFolder, "PlayerDB", AppSettings.PlayersFolder), txtFolder);
+                return false;
+            }
+            if (homeFolder.Length > 0 && !IsAddonFolder(homeFolder, AppSettings.HousesFolder))
+            {
+                ShowError(NotAddonMessage(homeFolder, "HomeDB", AppSettings.HousesFolder), txtHomeFolder);
                 return false;
             }
 
-            var url = txtUrl.Text.Trim();
+            var url = AppSettings.NormalizeBaseUrl(txtUrl.Text);
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
             {
                 ShowError("Enter a valid http(s) server URL.", txtUrl);
@@ -220,12 +325,23 @@ namespace PlayerDBSync
                 return false;
             }
 
-            _folder = folder;
-            _url = url;
+            txtUrl.Text = url;
+            _players.Folder = playersFolder.Length > 0 ? Path.Combine(playersFolder, AppSettings.PlayersFolder) : "";
+            _homes.Folder = homeFolder.Length > 0 ? Path.Combine(homeFolder, AppSettings.HousesFolder) : "";
+            foreach (var job in Jobs)
+            {
+                job.Url = url + job.EndpointPath;
+            }
             _userId = userId;
             _apiKey = txtApiKey.Text;
             return true;
         }
+
+        private static bool IsAddonFolder(string path, string dataFolder) =>
+            File.Exists(Path.Combine(path, AppSettings.AddonMarkerFile)) && Directory.Exists(Path.Combine(path, dataFolder));
+
+        private static string NotAddonMessage(string path, string addonName, string dataFolder) =>
+            $"This doesn't look like the {addonName} addon folder:\n{path}\n\nIt should contain {AppSettings.AddonMarkerFile} and a {dataFolder} folder.";
 
         private void ShowError(string message, Control focus)
         {
@@ -237,6 +353,8 @@ namespace PlayerDBSync
         {
             txtFolder.Enabled = enabled;
             btnBrowse.Enabled = enabled;
+            txtHomeFolder.Enabled = enabled;
+            btnBrowseHome.Enabled = enabled;
             txtUrl.Enabled = enabled;
             txtUserId.Enabled = enabled;
             txtApiKey.Enabled = enabled;
@@ -245,6 +363,7 @@ namespace PlayerDBSync
         private void SaveSettings()
         {
             _settings.Folder = txtFolder.Text.Trim();
+            _settings.HomeFolder = txtHomeFolder.Text.Trim();
             _settings.Url = txtUrl.Text.Trim();
             _settings.UserId = txtUserId.Text.Trim();
             _settings.SetApiKey(txtApiKey.Text);
@@ -269,7 +388,10 @@ namespace PlayerDBSync
 
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
-            syncTimer.Stop();
+            foreach (var job in Jobs)
+            {
+                job.Timer.Stop();
+            }
             _cts?.Cancel();
             SaveSettings();
         }

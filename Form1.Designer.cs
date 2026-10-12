@@ -32,6 +32,9 @@ namespace PlayerDBSync
             lblFolder = new Label();
             txtFolder = new TextBox();
             btnBrowse = new Button();
+            lblHomeFolder = new Label();
+            txtHomeFolder = new TextBox();
+            btnBrowseHome = new Button();
             lblUrl = new Label();
             txtUrl = new TextBox();
             lblUserId = new Label();
@@ -42,6 +45,7 @@ namespace PlayerDBSync
             lblStatus = new Label();
             txtLog = new TextBox();
             syncTimer = new System.Windows.Forms.Timer(components);
+            homesTimer = new System.Windows.Forms.Timer(components);
             SuspendLayout();
             //
             // lblFolder
@@ -49,16 +53,16 @@ namespace PlayerDBSync
             lblFolder.AutoSize = true;
             lblFolder.Location = new Point(12, 16);
             lblFolder.Name = "lblFolder";
-            lblFolder.Size = new Size(88, 15);
+            lblFolder.Size = new Size(91, 15);
             lblFolder.TabIndex = 0;
-            lblFolder.Text = "Players folder:";
+            lblFolder.Text = "PlayerDB addon:";
             //
             // txtFolder
             //
             txtFolder.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtFolder.Location = new Point(110, 12);
+            txtFolder.Location = new Point(150, 12);
             txtFolder.Name = "txtFolder";
-            txtFolder.Size = new Size(421, 23);
+            txtFolder.Size = new Size(381, 23);
             txtFolder.TabIndex = 1;
             //
             // btnBrowse
@@ -72,63 +76,91 @@ namespace PlayerDBSync
             btnBrowse.UseVisualStyleBackColor = true;
             btnBrowse.Click += btnBrowse_Click;
             //
+            // lblHomeFolder
+            //
+            lblHomeFolder.AutoSize = true;
+            lblHomeFolder.Location = new Point(12, 46);
+            lblHomeFolder.Name = "lblHomeFolder";
+            lblHomeFolder.Size = new Size(84, 15);
+            lblHomeFolder.TabIndex = 3;
+            lblHomeFolder.Text = "HomeDB addon:";
+            //
+            // txtHomeFolder
+            //
+            txtHomeFolder.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            txtHomeFolder.Location = new Point(150, 42);
+            txtHomeFolder.Name = "txtHomeFolder";
+            txtHomeFolder.Size = new Size(381, 23);
+            txtHomeFolder.TabIndex = 4;
+            //
+            // btnBrowseHome
+            //
+            btnBrowseHome.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnBrowseHome.Location = new Point(537, 41);
+            btnBrowseHome.Name = "btnBrowseHome";
+            btnBrowseHome.Size = new Size(85, 25);
+            btnBrowseHome.TabIndex = 5;
+            btnBrowseHome.Text = "Browse…";
+            btnBrowseHome.UseVisualStyleBackColor = true;
+            btnBrowseHome.Click += btnBrowseHome_Click;
+            //
             // lblUrl
             //
             lblUrl.AutoSize = true;
-            lblUrl.Location = new Point(12, 46);
+            lblUrl.Location = new Point(12, 76);
             lblUrl.Name = "lblUrl";
             lblUrl.Size = new Size(64, 15);
-            lblUrl.TabIndex = 3;
+            lblUrl.TabIndex = 6;
             lblUrl.Text = "Server URL:";
             //
             // txtUrl
             //
             txtUrl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtUrl.Location = new Point(110, 42);
+            txtUrl.Location = new Point(150, 72);
             txtUrl.Name = "txtUrl";
-            txtUrl.Size = new Size(512, 23);
-            txtUrl.TabIndex = 4;
+            txtUrl.Size = new Size(472, 23);
+            txtUrl.TabIndex = 7;
             //
             // lblUserId
             //
             lblUserId.AutoSize = true;
-            lblUserId.Location = new Point(12, 76);
+            lblUserId.Location = new Point(12, 106);
             lblUserId.Name = "lblUserId";
             lblUserId.Size = new Size(47, 15);
-            lblUserId.TabIndex = 5;
+            lblUserId.TabIndex = 8;
             lblUserId.Text = "User ID:";
             //
             // txtUserId
             //
-            txtUserId.Location = new Point(110, 72);
+            txtUserId.Location = new Point(150, 102);
             txtUserId.Name = "txtUserId";
             txtUserId.Size = new Size(120, 23);
-            txtUserId.TabIndex = 6;
+            txtUserId.TabIndex = 9;
             //
             // lblApiKey
             //
             lblApiKey.AutoSize = true;
-            lblApiKey.Location = new Point(12, 106);
+            lblApiKey.Location = new Point(12, 136);
             lblApiKey.Name = "lblApiKey";
             lblApiKey.Size = new Size(50, 15);
-            lblApiKey.TabIndex = 7;
+            lblApiKey.TabIndex = 10;
             lblApiKey.Text = "API key:";
             //
             // txtApiKey
             //
             txtApiKey.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtApiKey.Location = new Point(110, 102);
+            txtApiKey.Location = new Point(150, 132);
             txtApiKey.Name = "txtApiKey";
-            txtApiKey.Size = new Size(512, 23);
-            txtApiKey.TabIndex = 8;
+            txtApiKey.Size = new Size(472, 23);
+            txtApiKey.TabIndex = 11;
             txtApiKey.UseSystemPasswordChar = true;
             //
             // btnStart
             //
-            btnStart.Location = new Point(110, 134);
+            btnStart.Location = new Point(150, 164);
             btnStart.Name = "btnStart";
             btnStart.Size = new Size(100, 28);
-            btnStart.TabIndex = 9;
+            btnStart.TabIndex = 12;
             btnStart.Text = "Start";
             btnStart.UseVisualStyleBackColor = true;
             btnStart.Click += btnStart_Click;
@@ -136,33 +168,38 @@ namespace PlayerDBSync
             // lblStatus
             //
             lblStatus.AutoSize = true;
-            lblStatus.Location = new Point(220, 141);
+            lblStatus.Location = new Point(260, 164);
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(51, 15);
-            lblStatus.TabIndex = 10;
+            lblStatus.TabIndex = 13;
             lblStatus.Text = "Stopped";
             //
             // txtLog
             //
             txtLog.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            txtLog.Location = new Point(12, 172);
+            txtLog.Location = new Point(12, 202);
             txtLog.Multiline = true;
             txtLog.Name = "txtLog";
             txtLog.ReadOnly = true;
             txtLog.ScrollBars = ScrollBars.Vertical;
             txtLog.Size = new Size(610, 277);
-            txtLog.TabIndex = 11;
+            txtLog.TabIndex = 14;
             //
             // syncTimer
             //
             syncTimer.Interval = 300000;
             syncTimer.Tick += syncTimer_Tick;
             //
+            // homesTimer
+            //
+            homesTimer.Interval = 300000;
+            homesTimer.Tick += homesTimer_Tick;
+            //
             // Form1
             //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(634, 461);
+            ClientSize = new Size(634, 491);
             Controls.Add(txtLog);
             Controls.Add(lblStatus);
             Controls.Add(btnStart);
@@ -172,6 +209,9 @@ namespace PlayerDBSync
             Controls.Add(lblUserId);
             Controls.Add(txtUrl);
             Controls.Add(lblUrl);
+            Controls.Add(btnBrowseHome);
+            Controls.Add(txtHomeFolder);
+            Controls.Add(lblHomeFolder);
             Controls.Add(btnBrowse);
             Controls.Add(txtFolder);
             Controls.Add(lblFolder);
@@ -190,6 +230,9 @@ namespace PlayerDBSync
         private Label lblFolder;
         private TextBox txtFolder;
         private Button btnBrowse;
+        private Label lblHomeFolder;
+        private TextBox txtHomeFolder;
+        private Button btnBrowseHome;
         private Label lblUrl;
         private TextBox txtUrl;
         private Label lblUserId;
@@ -200,5 +243,6 @@ namespace PlayerDBSync
         private Label lblStatus;
         private TextBox txtLog;
         private System.Windows.Forms.Timer syncTimer;
+        private System.Windows.Forms.Timer homesTimer;
     }
 }

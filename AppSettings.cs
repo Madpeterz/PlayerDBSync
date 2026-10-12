@@ -11,17 +11,24 @@ namespace PlayerDBSync
     /// </summary>
     internal sealed class AppSettings
     {
-        public const string DefaultFolder = @"C:\AAClassic\Documents\Addon\PlayerDB\Players";
-        public const string DefaultUrl = "https://playerdb.blackatom.win/api/players";
+        public const string DefaultFolder = @"C:\AAClassic\Documents\Addon\PlayerDB";
 
-        // Earlier builds shipped this (wrong) default; saved copies of it are upgraded on load.
-        private const string OldDefaultUrl = "https://playerdb.blackatom.win/api/player";
+        // The addon folders are recognised by the marker file and their data folder.
+        public const string AddonMarkerFile = "main.lua";
+        public const string PlayersFolder = "Players";
+        public const string HousesFolder = "Houses";
+        public const string DefaultUrl = "https://playerdb.blackatom.win";
+
+        // Earlier builds stored the full players endpoint (or a wrong "/api/player" default); trimmed back to the base URL.
+        private static readonly string[] OldEndpointSuffixes = { "/api/players", "/api/player" };
 
         private static readonly string SettingsDir =
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PlayerDBSync");
         private static readonly string SettingsPath = Path.Combine(SettingsDir, "settings.json");
 
+        /// <summary>The PlayerDB addon folder (earlier builds stored its Players subfolder; upgraded on load).</summary>
         public string Folder { get; set; } = DefaultFolder;
+        public string HomeFolder { get; set; } = "";
         public string Url { get; set; } = DefaultUrl;
         public string UserId { get; set; } = "";
         public string ProtectedApiKey { get; set; } = "";
@@ -32,6 +39,10 @@ namespace PlayerDBSync
         /// </summary>
         public Dictionary<string, SyncRecord> SyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string SyncTarget { get; set; } = "";
+
+        /// <summary>As <see cref="SyncedFiles"/>/<see cref="SyncTarget"/>, for the HomeDB Houses folder.</summary>
+        public Dictionary<string, SyncRecord> HomeSyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string HomeSyncTarget { get; set; } = "";
 
         /// <summary>Legacy (hash-only) form of <see cref="SyncedFiles"/>; read for migration, never written.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -71,6 +82,7 @@ namespace PlayerDBSync
                     if (settings != null)
                     {
                         settings.SyncedFiles = new(settings.SyncedFiles, StringComparer.OrdinalIgnoreCase);
+                        settings.HomeSyncedFiles = new(settings.HomeSyncedFiles, StringComparer.OrdinalIgnoreCase);
                         if (settings.UploadedHashes != null)
                         {
                             // Size/time unknown, so the first scan re-hashes these once but won't re-upload them.
@@ -80,9 +92,11 @@ namespace PlayerDBSync
                             }
                             settings.UploadedHashes = null;
                         }
-                        if (string.Equals(settings.Url, OldDefaultUrl, StringComparison.OrdinalIgnoreCase))
+                        settings.Url = NormalizeBaseUrl(settings.Url);
+                        var folder = settings.Folder.TrimEnd('\\', '/');
+                        if (string.Equals(Path.GetFileName(folder), PlayersFolder, StringComparison.OrdinalIgnoreCase))
                         {
-                            settings.Url = DefaultUrl;
+                            settings.Folder = Path.GetDirectoryName(folder) ?? folder;
                         }
                         return settings;
                     }
@@ -93,6 +107,20 @@ namespace PlayerDBSync
                 // Corrupt or unreadable settings: fall back to defaults.
             }
             return new AppSettings();
+        }
+
+        /// <summary>Strips a trailing slash or an old players endpoint path, leaving the server's base URL.</summary>
+        public static string NormalizeBaseUrl(string url)
+        {
+            url = url.Trim().TrimEnd('/');
+            foreach (var suffix in OldEndpointSuffixes)
+            {
+                if (url.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return url[..^suffix.Length].TrimEnd('/');
+                }
+            }
+            return url;
         }
 
         public void Save()
