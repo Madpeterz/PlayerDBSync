@@ -35,6 +35,9 @@ namespace PlayerDBSync
             lblHomeFolder = new Label();
             txtHomeFolder = new TextBox();
             btnBrowseHome = new Button();
+            lblRegradeFolder = new Label();
+            txtRegradeFolder = new TextBox();
+            btnBrowseRegrade = new Button();
             lblUrl = new Label();
             txtUrl = new TextBox();
             lblUserId = new Label();
@@ -46,6 +49,7 @@ namespace PlayerDBSync
             txtLog = new TextBox();
             syncTimer = new System.Windows.Forms.Timer(components);
             homesTimer = new System.Windows.Forms.Timer(components);
+            regradesTimer = new System.Windows.Forms.Timer(components);
             SuspendLayout();
             //
             // lblFolder
@@ -104,63 +108,91 @@ namespace PlayerDBSync
             btnBrowseHome.UseVisualStyleBackColor = true;
             btnBrowseHome.Click += btnBrowseHome_Click;
             //
+            // lblRegradeFolder
+            //
+            lblRegradeFolder.AutoSize = true;
+            lblRegradeFolder.Location = new Point(12, 76);
+            lblRegradeFolder.Name = "lblRegradeFolder";
+            lblRegradeFolder.Size = new Size(94, 15);
+            lblRegradeFolder.TabIndex = 6;
+            lblRegradeFolder.Text = "RegradeDB addon:";
+            //
+            // txtRegradeFolder
+            //
+            txtRegradeFolder.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            txtRegradeFolder.Location = new Point(150, 72);
+            txtRegradeFolder.Name = "txtRegradeFolder";
+            txtRegradeFolder.Size = new Size(381, 23);
+            txtRegradeFolder.TabIndex = 7;
+            //
+            // btnBrowseRegrade
+            //
+            btnBrowseRegrade.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnBrowseRegrade.Location = new Point(537, 71);
+            btnBrowseRegrade.Name = "btnBrowseRegrade";
+            btnBrowseRegrade.Size = new Size(85, 25);
+            btnBrowseRegrade.TabIndex = 8;
+            btnBrowseRegrade.Text = "Browse…";
+            btnBrowseRegrade.UseVisualStyleBackColor = true;
+            btnBrowseRegrade.Click += btnBrowseRegrade_Click;
+            //
             // lblUrl
             //
             lblUrl.AutoSize = true;
-            lblUrl.Location = new Point(12, 76);
+            lblUrl.Location = new Point(12, 106);
             lblUrl.Name = "lblUrl";
             lblUrl.Size = new Size(64, 15);
-            lblUrl.TabIndex = 6;
+            lblUrl.TabIndex = 9;
             lblUrl.Text = "Server URL:";
             //
             // txtUrl
             //
             txtUrl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtUrl.Location = new Point(150, 72);
+            txtUrl.Location = new Point(150, 102);
             txtUrl.Name = "txtUrl";
             txtUrl.Size = new Size(472, 23);
-            txtUrl.TabIndex = 7;
+            txtUrl.TabIndex = 10;
             //
             // lblUserId
             //
             lblUserId.AutoSize = true;
-            lblUserId.Location = new Point(12, 106);
+            lblUserId.Location = new Point(12, 136);
             lblUserId.Name = "lblUserId";
             lblUserId.Size = new Size(47, 15);
-            lblUserId.TabIndex = 8;
+            lblUserId.TabIndex = 11;
             lblUserId.Text = "User ID:";
             //
             // txtUserId
             //
-            txtUserId.Location = new Point(150, 102);
+            txtUserId.Location = new Point(150, 132);
             txtUserId.Name = "txtUserId";
             txtUserId.Size = new Size(120, 23);
-            txtUserId.TabIndex = 9;
+            txtUserId.TabIndex = 12;
             //
             // lblApiKey
             //
             lblApiKey.AutoSize = true;
-            lblApiKey.Location = new Point(12, 136);
+            lblApiKey.Location = new Point(12, 166);
             lblApiKey.Name = "lblApiKey";
             lblApiKey.Size = new Size(50, 15);
-            lblApiKey.TabIndex = 10;
+            lblApiKey.TabIndex = 13;
             lblApiKey.Text = "API key:";
             //
             // txtApiKey
             //
             txtApiKey.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtApiKey.Location = new Point(150, 132);
+            txtApiKey.Location = new Point(150, 162);
             txtApiKey.Name = "txtApiKey";
             txtApiKey.Size = new Size(472, 23);
-            txtApiKey.TabIndex = 11;
+            txtApiKey.TabIndex = 14;
             txtApiKey.UseSystemPasswordChar = true;
             //
             // btnStart
             //
-            btnStart.Location = new Point(150, 164);
+            btnStart.Location = new Point(150, 194);
             btnStart.Name = "btnStart";
             btnStart.Size = new Size(100, 28);
-            btnStart.TabIndex = 12;
+            btnStart.TabIndex = 15;
             btnStart.Text = "Start";
             btnStart.UseVisualStyleBackColor = true;
             btnStart.Click += btnStart_Click;
@@ -168,22 +200,22 @@ namespace PlayerDBSync
             // lblStatus
             //
             lblStatus.AutoSize = true;
-            lblStatus.Location = new Point(260, 164);
+            lblStatus.Location = new Point(260, 194);
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(51, 15);
-            lblStatus.TabIndex = 13;
+            lblStatus.TabIndex = 16;
             lblStatus.Text = "Stopped";
             //
             // txtLog
             //
             txtLog.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            txtLog.Location = new Point(12, 202);
+            txtLog.Location = new Point(12, 248);
             txtLog.Multiline = true;
             txtLog.Name = "txtLog";
             txtLog.ReadOnly = true;
             txtLog.ScrollBars = ScrollBars.Vertical;
             txtLog.Size = new Size(610, 277);
-            txtLog.TabIndex = 14;
+            txtLog.TabIndex = 17;
             //
             // syncTimer
             //
@@ -195,11 +227,16 @@ namespace PlayerDBSync
             homesTimer.Interval = 300000;
             homesTimer.Tick += homesTimer_Tick;
             //
+            // regradesTimer
+            //
+            regradesTimer.Interval = 300000;
+            regradesTimer.Tick += regradesTimer_Tick;
+            //
             // Form1
             //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(634, 491);
+            ClientSize = new Size(634, 537);
             Controls.Add(txtLog);
             Controls.Add(lblStatus);
             Controls.Add(btnStart);
@@ -209,13 +246,16 @@ namespace PlayerDBSync
             Controls.Add(lblUserId);
             Controls.Add(txtUrl);
             Controls.Add(lblUrl);
+            Controls.Add(btnBrowseRegrade);
+            Controls.Add(txtRegradeFolder);
+            Controls.Add(lblRegradeFolder);
             Controls.Add(btnBrowseHome);
             Controls.Add(txtHomeFolder);
             Controls.Add(lblHomeFolder);
             Controls.Add(btnBrowse);
             Controls.Add(txtFolder);
             Controls.Add(lblFolder);
-            MinimumSize = new Size(500, 350);
+            MinimumSize = new Size(500, 400);
             Name = "Form1";
             Text = "PlayerDB Sync";
             FormClosing += Form1_FormClosing;
@@ -233,6 +273,9 @@ namespace PlayerDBSync
         private Label lblHomeFolder;
         private TextBox txtHomeFolder;
         private Button btnBrowseHome;
+        private Label lblRegradeFolder;
+        private TextBox txtRegradeFolder;
+        private Button btnBrowseRegrade;
         private Label lblUrl;
         private TextBox txtUrl;
         private Label lblUserId;
@@ -244,5 +287,6 @@ namespace PlayerDBSync
         private TextBox txtLog;
         private System.Windows.Forms.Timer syncTimer;
         private System.Windows.Forms.Timer homesTimer;
+        private System.Windows.Forms.Timer regradesTimer;
     }
 }
