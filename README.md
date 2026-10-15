@@ -1,6 +1,6 @@
 # PlayerDB Sync
 
-A small Windows app that uploads the data collected by the **PlayerDB**, **HomeDB** and **RegradeDB** ArcheAge Classic addons to the PlayerDB server.
+A small Windows app that uploads the data collected by the **PlayerDB**, **HomeDB**, **RegradeDB** and **RaidsDB** ArcheAge Classic addons to the PlayerDB server.
 
 It watches the addons' data folders, and every 5 minutes uploads any files that have changed:
 
@@ -9,13 +9,14 @@ It watches the addons' data folders, and every 5 minutes uploads any files that 
 | PlayerDB  | `PlayerDB\Players`    | `<server>/api/players`  |
 | HomeDB    | `HomeDB\Houses`       | `<server>/api/homes`    |
 | RegradeDB | `RegradeDB\Regrades`  | `<server>/api/regrades` |
+| RaidsDB   | `RaidsDB\Raids`       | `<server>/api/raids`    |
 
 You can sync any of the addons; leave the others empty.
 
 ## Requirements
 
 - Windows 10 or 11 (64-bit). Nothing else to install; the .NET runtime is bundled.
-- At least one of the PlayerDB, HomeDB or RegradeDB addons installed in ArcheAge Classic.
+- At least one of the PlayerDB, HomeDB, RegradeDB or RaidsDB addons installed in ArcheAge Classic.
 - Your PlayerDB **user ID** and **API key**.
 
 ## Setup
@@ -31,6 +32,7 @@ You can sync any of the addons; leave the others empty.
    | **PlayerDB addon** | The PlayerDB addon folder: the one containing `main.lua` and a `Players` folder. Leave empty to skip player uploads. |
    | **HomeDB addon**   | The HomeDB addon folder: the one containing `main.lua` and a `Houses` folder. Leave empty to skip house uploads. |
    | **RegradeDB addon** | The RegradeDB addon folder: the one containing `main.lua` and a `Regrades` folder. Leave empty to skip regrade uploads. |
+   | **RaidsDB addon**  | The RaidsDB addon folder: the one containing `main.lua` and a `Raids` folder. Leave empty to skip raid uploads. |
    | **Server URL**     | The server's base address, e.g. `https://playerdb.blackatom.win` (no `/api/...` on the end). |
    | **User ID**        | Your PlayerDB user ID (a number). |
    | **API key**        | Your PlayerDB API key. |
@@ -40,7 +42,7 @@ You can sync any of the addons; leave the others empty.
    - `C:\Users\<you>\Documents\AAClassic\Addon\`
    - `C:\AAClassic\Documents\Addon\`
 
-   If you pick the `Players`, `Houses` or `Regrades` folder by mistake, the app selects the addon folder above it for you.
+   If you pick the `Players`, `Houses`, `Regrades` or `Raids` folder by mistake, the app selects the addon folder above it for you.
 
 3. **Click Start.** The app uploads everything that isn't on the server yet, then checks for changes every 5 minutes. The log shows what it uploads.
 
@@ -51,6 +53,7 @@ Next time you open the app, it starts syncing straight away with the saved setti
 - Only changed files are uploaded. The app remembers what it has already sent, so restarting it doesn't upload everything again. Changing a folder, the server URL or the user ID does re-upload everything for that addon.
 - Changed files are sent in batches of up to 500.
 - Bookkeeping files (`_count.dat`, `empty.keep`) are skipped.
+- Raids are uploaded once the recording is stopped and saved to `Raids`; a raid still being recorded isn't sent.
 - If the server can't be reached or refuses an upload, the app waits longer between attempts (5, 10, 20, then 30 minutes) and logs the error once instead of every time. Each addon retries on its own, so a problem with one doesn't hold up the others.
 - If the server rejects one particular file, that file is skipped until it changes or the app is restarted.
 
@@ -62,7 +65,7 @@ Settings are saved in `%AppData%\PlayerDBSync\settings.json`. The API key is enc
 
 | Message | What to do |
 |---------|------------|
-| *This doesn't look like the PlayerDB/HomeDB/RegradeDB addon folder* | Pick the addon's own folder, the one with `main.lua` in it. If the `Players`, `Houses` or `Regrades` folder doesn't exist yet, run the game with the addon enabled first so it creates it. |
+| *This doesn't look like the PlayerDB/HomeDB/RegradeDB/RaidsDB addon folder* | Pick the addon's own folder, the one with `main.lua` in it. If the `Players`, `Houses`, `Regrades` or `Raids` folder doesn't exist yet, run the game with the addon enabled first so it creates it. |
 | *Server refused every upload … check the user ID, API key and PC clock* | Check your user ID and API key. Uploads are signed with your PC's time, so make sure Windows has the right time (Settings → Time & language → **Sync now**). |
 | *Failing (3x) – next try …* | The server is down or unreachable. The app keeps retrying on its own; check the Server URL if it never recovers. |
 

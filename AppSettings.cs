@@ -18,6 +18,7 @@ namespace PlayerDBSync
         public const string PlayersFolder = "Players";
         public const string HousesFolder = "Houses";
         public const string RegradesFolder = "Regrades";
+        public const string RaidsFolder = "Raids";
         public const string DefaultUrl = "https://playerdb.blackatom.win";
 
         // Earlier builds stored the full players endpoint (or a wrong "/api/player" default); trimmed back to the base URL.
@@ -31,6 +32,7 @@ namespace PlayerDBSync
         public string Folder { get; set; } = DefaultFolder;
         public string HomeFolder { get; set; } = "";
         public string RegradeFolder { get; set; } = "";
+        public string RaidFolder { get; set; } = "";
         public string Url { get; set; } = DefaultUrl;
         public string UserId { get; set; } = "";
         public string ProtectedApiKey { get; set; } = "";
@@ -49,6 +51,10 @@ namespace PlayerDBSync
         /// <summary>As <see cref="SyncedFiles"/>/<see cref="SyncTarget"/>, for the RegradeDB Regrades folder.</summary>
         public Dictionary<string, SyncRecord> RegradeSyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string RegradeSyncTarget { get; set; } = "";
+
+        /// <summary>As <see cref="SyncedFiles"/>/<see cref="SyncTarget"/>, for the RaidsDB Raids folder.</summary>
+        public Dictionary<string, SyncRecord> RaidSyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string RaidSyncTarget { get; set; } = "";
 
         /// <summary>Legacy (hash-only) form of <see cref="SyncedFiles"/>; read for migration, never written.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -90,6 +96,7 @@ namespace PlayerDBSync
                         settings.SyncedFiles = new(settings.SyncedFiles, StringComparer.OrdinalIgnoreCase);
                         settings.HomeSyncedFiles = new(settings.HomeSyncedFiles, StringComparer.OrdinalIgnoreCase);
                         settings.RegradeSyncedFiles = new(settings.RegradeSyncedFiles, StringComparer.OrdinalIgnoreCase);
+                        settings.RaidSyncedFiles = new(settings.RaidSyncedFiles, StringComparer.OrdinalIgnoreCase);
                         if (settings.UploadedHashes != null)
                         {
                             // Size/time unknown, so the first scan re-hashes these once but won't re-upload them.

@@ -9,6 +9,7 @@ namespace PlayerDBSync
         private readonly SyncJob _players;
         private readonly SyncJob _homes;
         private readonly SyncJob _regrades;
+        private readonly SyncJob _raids;
         private CancellationTokenSource? _cts;
 
         // Snapshot of the credentials taken when sync starts, so edits to the boxes don't affect a running sync.
@@ -42,7 +43,7 @@ namespace PlayerDBSync
             public string? LastError { get; set; }
         }
 
-        private IEnumerable<SyncJob> Jobs => [_players, _homes, _regrades];
+        private IEnumerable<SyncJob> Jobs => [_players, _homes, _regrades, _raids];
 
         public Form1()
         {
@@ -50,6 +51,7 @@ namespace PlayerDBSync
             _players = new SyncJob("Players", "/api/players", syncTimer, new DatUploader(m => Log($"Players: {m}")), _settings.SyncedFiles);
             _homes = new SyncJob("Homes", "/api/homes", homesTimer, new DatUploader(m => Log($"Homes: {m}")), _settings.HomeSyncedFiles);
             _regrades = new SyncJob("Regrades", "/api/regrades", regradesTimer, new DatUploader(m => Log($"Regrades: {m}")), _settings.RegradeSyncedFiles);
+            _raids = new SyncJob("Raids", "/api/raids", raidsTimer, new DatUploader(m => Log($"Raids: {m}")), _settings.RaidSyncedFiles);
         }
 
         private void Form1_Load(object? sender, EventArgs e)
@@ -57,6 +59,7 @@ namespace PlayerDBSync
             txtFolder.Text = _settings.Folder;
             txtHomeFolder.Text = _settings.HomeFolder;
             txtRegradeFolder.Text = _settings.RegradeFolder;
+            txtRaidFolder.Text = _settings.RaidFolder;
             txtUrl.Text = _settings.Url;
             txtUserId.Text = _settings.UserId;
             txtApiKey.Text = _settings.GetApiKey();
@@ -69,10 +72,12 @@ namespace PlayerDBSync
             var players = txtFolder.Text.Trim();
             var home = txtHomeFolder.Text.Trim();
             var regrade = txtRegradeFolder.Text.Trim();
-            if ((players.Length > 0 || home.Length > 0 || regrade.Length > 0)
+            var raid = txtRaidFolder.Text.Trim();
+            if ((players.Length > 0 || home.Length > 0 || regrade.Length > 0 || raid.Length > 0)
                 && (players.Length == 0 || IsAddonFolder(players, AppSettings.PlayersFolder))
                 && (home.Length == 0 || IsAddonFolder(home, AppSettings.HousesFolder))
                 && (regrade.Length == 0 || IsAddonFolder(regrade, AppSettings.RegradesFolder))
+                && (raid.Length == 0 || IsAddonFolder(raid, AppSettings.RaidsFolder))
                 && txtUrl.Text.Trim().Length > 0
                 && long.TryParse(txtUserId.Text.Trim(), out var id) && id > 0
                 && txtApiKey.Text.Length > 0)
@@ -94,6 +99,11 @@ namespace PlayerDBSync
         private void btnBrowseRegrade_Click(object? sender, EventArgs e)
         {
             BrowseAddonFolder(txtRegradeFolder, "RegradeDB", AppSettings.RegradesFolder, "");
+        }
+
+        private void btnBrowseRaid_Click(object? sender, EventArgs e)
+        {
+            BrowseAddonFolder(txtRaidFolder, "RaidsDB", AppSettings.RaidsFolder, "");
         }
 
         private void BrowseAddonFolder(TextBox box, string addonName, string dataFolder, string fallback)
@@ -142,6 +152,7 @@ namespace PlayerDBSync
             _settings.SyncTarget = Retarget(_players, _settings.SyncTarget);
             _settings.HomeSyncTarget = Retarget(_homes, _settings.HomeSyncTarget);
             _settings.RegradeSyncTarget = Retarget(_regrades, _settings.RegradeSyncTarget);
+            _settings.RaidSyncTarget = Retarget(_raids, _settings.RaidSyncTarget);
 
             _cts = new CancellationTokenSource();
             SetInputsEnabled(false);
@@ -200,6 +211,11 @@ namespace PlayerDBSync
         private async void regradesTimer_Tick(object? sender, EventArgs e)
         {
             await RunSyncAsync(_regrades);
+        }
+
+        private async void raidsTimer_Tick(object? sender, EventArgs e)
+        {
+            await RunSyncAsync(_raids);
         }
 
         private async Task RunSyncAsync(SyncJob job)
@@ -307,9 +323,10 @@ namespace PlayerDBSync
             var playersFolder = txtFolder.Text.Trim();
             var homeFolder = txtHomeFolder.Text.Trim();
             var regradeFolder = txtRegradeFolder.Text.Trim();
-            if (playersFolder.Length == 0 && homeFolder.Length == 0 && regradeFolder.Length == 0)
+            var raidFolder = txtRaidFolder.Text.Trim();
+            if (playersFolder.Length == 0 && homeFolder.Length == 0 && regradeFolder.Length == 0 && raidFolder.Length == 0)
             {
-                ShowError("Select a PlayerDB, HomeDB or RegradeDB addon folder to sync.", txtFolder);
+                ShowError("Select a PlayerDB, HomeDB, RegradeDB or RaidsDB addon folder to sync.", txtFolder);
                 return false;
             }
             if (playersFolder.Length > 0 && !IsAddonFolder(playersFolder, AppSettings.PlayersFolder))
@@ -325,6 +342,11 @@ namespace PlayerDBSync
             if (regradeFolder.Length > 0 && !IsAddonFolder(regradeFolder, AppSettings.RegradesFolder))
             {
                 ShowError(NotAddonMessage(regradeFolder, "RegradeDB", AppSettings.RegradesFolder), txtRegradeFolder);
+                return false;
+            }
+            if (raidFolder.Length > 0 && !IsAddonFolder(raidFolder, AppSettings.RaidsFolder))
+            {
+                ShowError(NotAddonMessage(raidFolder, "RaidsDB", AppSettings.RaidsFolder), txtRaidFolder);
                 return false;
             }
 
@@ -351,6 +373,7 @@ namespace PlayerDBSync
             _players.Folder = playersFolder.Length > 0 ? Path.Combine(playersFolder, AppSettings.PlayersFolder) : "";
             _homes.Folder = homeFolder.Length > 0 ? Path.Combine(homeFolder, AppSettings.HousesFolder) : "";
             _regrades.Folder = regradeFolder.Length > 0 ? Path.Combine(regradeFolder, AppSettings.RegradesFolder) : "";
+            _raids.Folder = raidFolder.Length > 0 ? Path.Combine(raidFolder, AppSettings.RaidsFolder) : "";
             foreach (var job in Jobs)
             {
                 job.Url = url + job.EndpointPath;
@@ -380,6 +403,8 @@ namespace PlayerDBSync
             btnBrowseHome.Enabled = enabled;
             txtRegradeFolder.Enabled = enabled;
             btnBrowseRegrade.Enabled = enabled;
+            txtRaidFolder.Enabled = enabled;
+            btnBrowseRaid.Enabled = enabled;
             txtUrl.Enabled = enabled;
             txtUserId.Enabled = enabled;
             txtApiKey.Enabled = enabled;
@@ -390,6 +415,7 @@ namespace PlayerDBSync
             _settings.Folder = txtFolder.Text.Trim();
             _settings.HomeFolder = txtHomeFolder.Text.Trim();
             _settings.RegradeFolder = txtRegradeFolder.Text.Trim();
+            _settings.RaidFolder = txtRaidFolder.Text.Trim();
             _settings.Url = txtUrl.Text.Trim();
             _settings.UserId = txtUserId.Text.Trim();
             _settings.SetApiKey(txtApiKey.Text);
