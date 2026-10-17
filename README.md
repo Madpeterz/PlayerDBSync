@@ -76,7 +76,7 @@ Tick **Save screenshot on RaidsDB request** to let the RaidsDB addon ask for scr
 
 Screenshots are saved to `%TEMP%\PlayerDBSync\Screenshots`, named after the start time of the raid being recorded in `RaidsDB\current.dat`, numbered from 1: `2026-10-17_19-07-20-1.webp`, `2026-10-17_19-07-20-2.webp`, and so on. They're saved as lossy WebP (quality 80) to keep uploads small. Captures larger than 1920×1080 are scaled down to fit, keeping their aspect ratio. The start time is in UTC, the same as the addon's saved raid files. If no raid is recording, the current time is used.
 
-While RaidsDB is synced, the app uploads the screenshots in that folder every 30 seconds. When sync starts, any screenshot still waiting that's larger than 1920×1080 is scaled down first. Uploads go oldest first, up to 3 at a time. Once the server has a screenshot it's moved to `%TEMP%\PlayerDBSync\Screenshots\Uploaded`, so anything left in the main folder is still waiting to be sent. If the server rejects a screenshot (for example because it's too large), that file is skipped until it changes or the app is restarted. If the upload fails, it's tried again on the next 30-second tick.
+While RaidsDB is synced, the app uploads the screenshots in that folder every 30 seconds. When sync starts, any screenshot still waiting that's larger than 1920×1080 is scaled down first. Uploads go oldest first, up to 3 at a time. Once the server has a screenshot it's deleted, so anything left in the folder is still waiting to be sent. If the server rejects a screenshot (for example because it's too large), that file is skipped until it changes or the app is restarted. If the upload fails, it's tried again on the next 30-second tick.
 
 ## Settings
 

@@ -82,17 +82,16 @@ namespace PlayerDBSync
         public static string FileStamp(DateTime time) => time.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
 
         /// <summary>
-        ///  The first "&lt;baseName&gt;-N.webp" in <see cref="OutputFolder"/>, counting from 1, that isn't used there
-        ///  or by an image already moved to <see cref="RaidImageUploader.UploadedFolder"/>.
+        ///  The first unused "&lt;baseName&gt;-N.webp" in <see cref="OutputFolder"/>, counting from 1. Uploaded images
+        ///  are deleted, so a number can come round again; the server gives a clash the next number free.
         /// </summary>
         public static string NextPath(string baseName)
         {
             Directory.CreateDirectory(OutputFolder);
             for (int n = 1; ; n++)
             {
-                var name = $"{baseName}-{n}.webp";
-                var path = Path.Combine(OutputFolder, name);
-                if (!File.Exists(path) && !File.Exists(Path.Combine(RaidImageUploader.UploadedFolder, name)))
+                var path = Path.Combine(OutputFolder, $"{baseName}-{n}.webp");
+                if (!File.Exists(path))
                 {
                     return path;
                 }

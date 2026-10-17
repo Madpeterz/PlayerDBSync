@@ -7,15 +7,13 @@ namespace PlayerDBSync
 {
     /// <summary>
     ///  Uploads the raid screenshots in <see cref="RaidScreenshot.OutputFolder"/>, oldest first, a few at a time.
-    ///  Once the server has an image (added now or already known) it is moved to <see cref="UploadedFolder"/>,
-    ///  so the folder itself only ever holds what is still to be sent.
+    ///  Once the server has an image (added now or already known) it is deleted, so the folder only ever
+    ///  holds what is still to be sent.
     /// </summary>
     internal sealed class RaidImageUploader
     {
         public const string EndpointPath = "/api/raids/images";
         public const int MaxPerUpload = 3;
-
-        public static readonly string UploadedFolder = Path.Combine(RaidScreenshot.OutputFolder, "Uploaded");
 
         private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(100) };
 
@@ -176,8 +174,7 @@ namespace PlayerDBSync
                 _rejected.Remove(image.Name);
                 try
                 {
-                    Directory.CreateDirectory(UploadedFolder);
-                    File.Move(image.Path, Path.Combine(UploadedFolder, image.Name), overwrite: true);
+                    File.Delete(image.Path);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
