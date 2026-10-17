@@ -57,6 +57,27 @@ Next time you open the app, it starts syncing straight away with the saved setti
 - If the server can't be reached or refuses an upload, the app waits longer between attempts (5, 10, 20, then 30 minutes) and logs the error once instead of every time. Each addon retries on its own, so a problem with one doesn't hold up the others.
 - If the server rejects one particular file, that file is skipped until it changes or the app is restarted.
 
+## Raid item ignore list
+
+While RaidsDB is synced, the app downloads the server's list of raid items to ignore when it starts syncing and then every 15 minutes, and saves it as `RaidsDB\ignore.dat` for the addon to read. The file is only rewritten when the list changes:
+
+```lua
+{
+    items = {
+        ["Ash Shard"] = true,
+        ["Schematic Scrap"] = true,
+    },
+}
+```
+
+## Raid screenshots
+
+Tick **Save screenshot on RaidsDB request** to let the RaidsDB addon ask for screenshots. While syncing, the app checks every 2 seconds for `RaidsDB\Raids\request.sht`. When it finds one, it captures the `archeage.exe` window and deletes the request once the screenshot is saved. If the capture fails (for example the game is minimised), the request is kept and retried every 2 seconds.
+
+Screenshots are saved to `%TEMP%\PlayerDBSync\Screenshots`, named after the start time of the raid being recorded in `RaidsDB\current.dat`, numbered from 1: `2026-10-17_19-07-20-1.webp`, `2026-10-17_19-07-20-2.webp`, and so on. They're saved as lossy WebP (quality 80) to keep uploads small. Captures larger than 1920×1080 are scaled down to fit, keeping their aspect ratio. The start time is in UTC, the same as the addon's saved raid files. If no raid is recording, the current time is used.
+
+While RaidsDB is synced, the app uploads the screenshots in that folder every 30 seconds. When sync starts, any screenshot still waiting that's larger than 1920×1080 is scaled down first. Uploads go oldest first, up to 3 at a time. Once the server has a screenshot it's moved to `%TEMP%\PlayerDBSync\Screenshots\Uploaded`, so anything left in the main folder is still waiting to be sent. If the server rejects a screenshot (for example because it's too large), that file is skipped until it changes or the app is restarted. If the upload fails, it's tried again on the next 30-second tick.
+
 ## Settings
 
 Settings are saved in `%AppData%\PlayerDBSync\settings.json`. The API key is encrypted so only your Windows account can read it. To start fresh, close the app and delete that file.

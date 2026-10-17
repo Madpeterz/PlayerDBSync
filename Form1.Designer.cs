@@ -47,6 +47,7 @@ namespace PlayerDBSync
             txtUserId = new TextBox();
             lblApiKey = new Label();
             txtApiKey = new TextBox();
+            chkRaidScreenshots = new CheckBox();
             btnStart = new Button();
             lblStatus = new Label();
             txtLog = new TextBox();
@@ -54,6 +55,8 @@ namespace PlayerDBSync
             homesTimer = new System.Windows.Forms.Timer(components);
             regradesTimer = new System.Windows.Forms.Timer(components);
             raidsTimer = new System.Windows.Forms.Timer(components);
+            ignoreTimer = new System.Windows.Forms.Timer(components);
+            imagesTimer = new System.Windows.Forms.Timer(components);
             SuspendLayout();
             //
             // lblFolder
@@ -219,12 +222,23 @@ namespace PlayerDBSync
             txtApiKey.TabIndex = 17;
             txtApiKey.UseSystemPasswordChar = true;
             //
+            // chkRaidScreenshots
+            //
+            chkRaidScreenshots.AutoSize = true;
+            chkRaidScreenshots.Location = new Point(150, 224);
+            chkRaidScreenshots.Name = "chkRaidScreenshots";
+            chkRaidScreenshots.Size = new Size(230, 19);
+            chkRaidScreenshots.TabIndex = 18;
+            chkRaidScreenshots.Text = "Save screenshot on RaidsDB request";
+            chkRaidScreenshots.UseVisualStyleBackColor = true;
+            chkRaidScreenshots.CheckedChanged += chkRaidScreenshots_CheckedChanged;
+            //
             // btnStart
             //
-            btnStart.Location = new Point(150, 224);
+            btnStart.Location = new Point(150, 252);
             btnStart.Name = "btnStart";
             btnStart.Size = new Size(100, 28);
-            btnStart.TabIndex = 18;
+            btnStart.TabIndex = 19;
             btnStart.Text = "Start";
             btnStart.UseVisualStyleBackColor = true;
             btnStart.Click += btnStart_Click;
@@ -232,22 +246,22 @@ namespace PlayerDBSync
             // lblStatus
             //
             lblStatus.AutoSize = true;
-            lblStatus.Location = new Point(260, 224);
+            lblStatus.Location = new Point(260, 252);
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(51, 15);
-            lblStatus.TabIndex = 19;
+            lblStatus.TabIndex = 20;
             lblStatus.Text = "Stopped";
             //
             // txtLog
             //
             txtLog.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            txtLog.Location = new Point(12, 278);
+            txtLog.Location = new Point(12, 306);
             txtLog.Multiline = true;
             txtLog.Name = "txtLog";
             txtLog.ReadOnly = true;
             txtLog.ScrollBars = ScrollBars.Vertical;
             txtLog.Size = new Size(610, 277);
-            txtLog.TabIndex = 20;
+            txtLog.TabIndex = 21;
             //
             // syncTimer
             //
@@ -269,14 +283,25 @@ namespace PlayerDBSync
             raidsTimer.Interval = 300000;
             raidsTimer.Tick += raidsTimer_Tick;
             //
+            // ignoreTimer
+            //
+            ignoreTimer.Interval = 900000;
+            ignoreTimer.Tick += ignoreTimer_Tick;
+            //
+            // imagesTimer
+            //
+            imagesTimer.Interval = 30000;
+            imagesTimer.Tick += imagesTimer_Tick;
+            //
             // Form1
             //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(634, 567);
+            ClientSize = new Size(634, 595);
             Controls.Add(txtLog);
             Controls.Add(lblStatus);
             Controls.Add(btnStart);
+            Controls.Add(chkRaidScreenshots);
             Controls.Add(txtApiKey);
             Controls.Add(lblApiKey);
             Controls.Add(txtUserId);
@@ -325,6 +350,7 @@ namespace PlayerDBSync
         private TextBox txtUserId;
         private Label lblApiKey;
         private TextBox txtApiKey;
+        private CheckBox chkRaidScreenshots;
         private Button btnStart;
         private Label lblStatus;
         private TextBox txtLog;
@@ -332,5 +358,7 @@ namespace PlayerDBSync
         private System.Windows.Forms.Timer homesTimer;
         private System.Windows.Forms.Timer regradesTimer;
         private System.Windows.Forms.Timer raidsTimer;
+        private System.Windows.Forms.Timer ignoreTimer;
+        private System.Windows.Forms.Timer imagesTimer;
     }
 }

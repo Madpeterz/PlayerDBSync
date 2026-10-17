@@ -37,6 +37,9 @@ namespace PlayerDBSync
         public string UserId { get; set; } = "";
         public string ProtectedApiKey { get; set; } = "";
 
+        /// <summary>Capture the game window when the RaidsDB addon writes Raids\request.sht.</summary>
+        public bool RaidScreenshots { get; set; }
+
         /// <summary>
         ///  What was last uploaded for each file, keyed by file name.
         ///  Only valid for the folder/url/user it was recorded against (see <see cref="SyncTarget"/>).

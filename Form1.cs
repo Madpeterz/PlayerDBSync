@@ -4,6 +4,7 @@ namespace PlayerDBSync
     {
         private const int MaxLogLines = 500;
         private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(30);
+        private static readonly TimeSpan ScreenshotCheckInterval = TimeSpan.FromSeconds(2);
 
         private readonly AppSettings _settings = AppSettings.Load();
         private readonly SyncJob _players;
@@ -11,6 +12,22 @@ namespace PlayerDBSync
         private readonly SyncJob _regrades;
         private readonly SyncJob _raids;
         private CancellationTokenSource? _cts;
+
+        // The raid item ignore list, downloaded when sync starts and on ignoreTimer while RaidsDB is synced.
+        private string _raidIgnoreUrl = "";
+        private bool _ignoreRefreshing;
+        private string? _lastIgnoreError;
+
+        // Raid screenshots waiting in RaidScreenshot.OutputFolder, uploaded on imagesTimer while RaidsDB is synced.
+        private readonly RaidImageUploader _imageUploader;
+        private string _raidImagesUrl = "";
+        private bool _imagesUploading;
+        private string? _lastImagesError;
+
+        // Raid screenshots are taken on their own thread, started with the sync and ended by its cancellation.
+        private Thread? _screenshotThread;
+        // Mirrors the checkbox so the screenshot thread can read it.
+        private volatile bool _screenshotsOn;
 
         // Snapshot of the credentials taken when sync starts, so edits to the boxes don't affect a running sync.
         private long _userId;
@@ -52,6 +69,7 @@ namespace PlayerDBSync
             _homes = new SyncJob("Homes", "/api/homes", homesTimer, new DatUploader(m => Log($"Homes: {m}")), _settings.HomeSyncedFiles);
             _regrades = new SyncJob("Regrades", "/api/regrades", regradesTimer, new DatUploader(m => Log($"Regrades: {m}")), _settings.RegradeSyncedFiles);
             _raids = new SyncJob("Raids", "/api/raids", raidsTimer, new DatUploader(m => Log($"Raids: {m}")), _settings.RaidSyncedFiles);
+            _imageUploader = new RaidImageUploader(m => Log($"Screenshots: {m}"));
         }
 
         private void Form1_Load(object? sender, EventArgs e)
@@ -63,6 +81,7 @@ namespace PlayerDBSync
             txtUrl.Text = _settings.Url;
             txtUserId.Text = _settings.UserId;
             txtApiKey.Text = _settings.GetApiKey();
+            chkRaidScreenshots.Checked = _settings.RaidScreenshots;
         }
 
         private void Form1_Shown(object? sender, EventArgs e)
@@ -169,13 +188,38 @@ namespace PlayerDBSync
                     Log($"{job.Name}: watching {job.Folder} (checking every {TimeSpan.FromMilliseconds(job.Timer.Interval).TotalMinutes:0.#} min)");
                 }
             }
+            _lastIgnoreError = null;
+            _imageUploader.ResetCache();
+            _lastImagesError = null;
+            if (_raids.Enabled)
+            {
+                Log($"Raids: downloading the item ignore list every {TimeSpan.FromMilliseconds(ignoreTimer.Interval).TotalMinutes:0.#} min");
+                Log($"Screenshots: uploading new ones from {RaidScreenshot.OutputFolder} every {TimeSpan.FromMilliseconds(imagesTimer.Interval).TotalSeconds:0} s, up to {RaidImageUploader.MaxPerUpload} at a time");
 
-            await Task.WhenAll(Jobs.Select(RunSyncAsync));
+                // Runs all the time; it does nothing while the box is unticked.
+                // A thread from the previous run may still be finishing a screenshot.
+                _screenshotThread?.Join(TimeSpan.FromSeconds(10));
+                var raidsFolder = _raids.Folder;
+                var token = _cts.Token;
+                _screenshotThread = new Thread(() => WatchScreenshotRequests(raidsFolder, token))
+                {
+                    IsBackground = true,
+                    Name = "Raid screenshots",
+                };
+                _screenshotThread.Start();
+            }
+
+            await Task.WhenAll(Jobs.Select(RunSyncAsync).Append(RefreshIgnoreListAsync()).Append(StartImageUploadsAsync()));
             if (_cts != null)
             {
                 foreach (var job in Jobs.Where(j => j.Enabled))
                 {
                     job.Timer.Start();
+                }
+                if (_raids.Enabled)
+                {
+                    ignoreTimer.Start();
+                    imagesTimer.Start();
                 }
             }
         }
@@ -216,6 +260,244 @@ namespace PlayerDBSync
         private async void raidsTimer_Tick(object? sender, EventArgs e)
         {
             await RunSyncAsync(_raids);
+        }
+
+        private async void ignoreTimer_Tick(object? sender, EventArgs e)
+        {
+            await RefreshIgnoreListAsync();
+        }
+
+        /// <summary>Downloads the raid item ignore list into the RaidsDB addon folder.</summary>
+        private async Task RefreshIgnoreListAsync()
+        {
+            if (_ignoreRefreshing || _cts == null || !_raids.Enabled)
+            {
+                return;
+            }
+
+            _ignoreRefreshing = true;
+            var ct = _cts.Token;
+            string? error;
+            try
+            {
+                var (items, downloadError) = await RaidIgnoreList.DownloadAsync(_raidIgnoreUrl, _userId, _apiKey, ct);
+                error = downloadError;
+                if (items != null)
+                {
+                    var addonFolder = Path.GetDirectoryName(_raids.Folder)!;
+                    if (await Task.Run(() => RaidIgnoreList.Save(addonFolder, items), ct))
+                    {
+                        Log($"Raids: saved the item ignore list ({items.Count} items) to {Path.Combine(addonFolder, RaidIgnoreList.FileName)}");
+                    }
+                    if (_lastIgnoreError != null)
+                    {
+                        Log("Raids: ignore list download working again");
+                    }
+                    _lastIgnoreError = null;
+                    return;
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+            }
+            finally
+            {
+                _ignoreRefreshing = false;
+            }
+
+            // Only log when the error changes; the next tick retries.
+            error = $"Raids: couldn't update the item ignore list: {error} – retrying in {TimeSpan.FromMilliseconds(ignoreTimer.Interval).TotalMinutes:0.#} min";
+            if (error != _lastIgnoreError)
+            {
+                Log(error);
+                _lastIgnoreError = error;
+            }
+        }
+
+        private async void imagesTimer_Tick(object? sender, EventArgs e)
+        {
+            await UploadImagesAsync();
+        }
+
+        /// <summary>When sync starts: scales down screenshots waiting from before, then uploads the first few.</summary>
+        private async Task StartImageUploadsAsync()
+        {
+            if (_cts == null || !_raids.Enabled)
+            {
+                return;
+            }
+            var ct = _cts.Token;
+            try
+            {
+                await _imageUploader.ShrinkWaitingAsync(ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                Log($"Screenshots: couldn't resize the waiting screenshots: {ex.Message}");
+            }
+            await UploadImagesAsync();
+        }
+
+        /// <summary>Uploads the next few raid screenshots waiting to be sent.</summary>
+        private async Task UploadImagesAsync()
+        {
+            if (_imagesUploading || _cts == null || !_raids.Enabled)
+            {
+                return;
+            }
+
+            _imagesUploading = true;
+            var ct = _cts.Token;
+            string? error;
+            try
+            {
+                (_, error) = await _imageUploader.UploadNextAsync(_raidImagesUrl, _userId, _apiKey, ct);
+                if (error == null)
+                {
+                    if (_lastImagesError != null)
+                    {
+                        Log("Screenshots: uploading working again");
+                    }
+                    _lastImagesError = null;
+                    return;
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+            }
+            finally
+            {
+                _imagesUploading = false;
+            }
+
+            // Only log when the error changes; the next tick retries.
+            error = $"Screenshots: couldn't upload: {error} – retrying in {TimeSpan.FromMilliseconds(imagesTimer.Interval).TotalSeconds:0} s";
+            if (error != _lastImagesError)
+            {
+                Log(error);
+                _lastImagesError = error;
+            }
+        }
+
+        private void chkRaidScreenshots_CheckedChanged(object? sender, EventArgs e)
+        {
+            _screenshotsOn = chkRaidScreenshots.Checked;
+            if (_settings.RaidScreenshots == chkRaidScreenshots.Checked)
+            {
+                return;
+            }
+            SaveSettings();
+            if (chkRaidScreenshots.Checked && _cts != null && !_raids.Enabled)
+            {
+                Log("Screenshots: needs the RaidsDB addon folder; stop and set it to use this");
+            }
+        }
+
+        /// <summary>
+        ///  The screenshot thread: checks for request.sht every <see cref="ScreenshotCheckInterval"/> and answers it.
+        ///  Capturing, encoding and file work all happen here, never on the UI thread.
+        /// </summary>
+        private void WatchScreenshotRequests(string raidsFolder, CancellationToken ct)
+        {
+            var addonFolder = Path.GetDirectoryName(raidsFolder)!;
+            // The current request.sht already has its screenshot saved but couldn't be removed yet.
+            bool requestAnswered = false;
+            string? lastError = null;
+
+            while (WaitForNextCheck(ct))
+            {
+                if (!_screenshotsOn)
+                {
+                    continue;
+                }
+                if (!RaidScreenshot.HasRequest(raidsFolder))
+                {
+                    requestAnswered = false;
+                    continue;
+                }
+                if (requestAnswered)
+                {
+                    // Don't take a second screenshot for the same request; just finish removing it.
+                    requestAnswered = !RaidScreenshot.TryRemoveRequest(raidsFolder);
+                    continue;
+                }
+
+                string error;
+                try
+                {
+                    var (image, captureError) = RaidScreenshot.CaptureGame();
+                    if (image != null)
+                    {
+                        using (image)
+                        {
+                            var name = RaidScreenshot.RaidStartName(addonFolder);
+                            if (name == null)
+                            {
+                                LogFromThread("Screenshot: no raid is recording in current.dat, naming it after the current time");
+                                name = RaidScreenshot.FileStamp(DateTime.UtcNow);
+                            }
+                            var path = RaidScreenshot.NextPath(name);
+                            RaidScreenshot.SaveWebp(image, path);
+                            LogFromThread($"Screenshot saved: {path}");
+                        }
+                        lastError = null;
+                        requestAnswered = !RaidScreenshot.TryRemoveRequest(raidsFolder);
+                        continue;
+                    }
+                    error = $"Screenshot requested but {captureError} – retrying";
+                }
+                catch (Exception ex)
+                {
+                    error = $"Screenshot error: {ex.Message} – retrying";
+                }
+
+                // The request is kept, so this retries every check; only log when the reason changes.
+                if (error != lastError)
+                {
+                    LogFromThread(error);
+                    lastError = error;
+                }
+            }
+        }
+
+        /// <summary>Waits until the next check; false once the sync has stopped.</summary>
+        private static bool WaitForNextCheck(CancellationToken ct)
+        {
+            try
+            {
+                return !ct.WaitHandle.WaitOne(ScreenshotCheckInterval);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Stopping cancels and disposes the token source, possibly while a screenshot was being taken.
+                return false;
+            }
+        }
+
+        /// <summary>Logs from a background thread; dropped if the form has closed meanwhile.</summary>
+        private void LogFromThread(string message)
+        {
+            try
+            {
+                BeginInvoke(() => Log(message));
+            }
+            catch (InvalidOperationException)
+            {
+            }
         }
 
         private async Task RunSyncAsync(SyncJob job)
@@ -308,6 +590,8 @@ namespace PlayerDBSync
             {
                 job.Timer.Stop();
             }
+            ignoreTimer.Stop();
+            imagesTimer.Stop();
             _cts?.Cancel();
             _cts?.Dispose();
             _cts = null;
@@ -378,6 +662,8 @@ namespace PlayerDBSync
             {
                 job.Url = url + job.EndpointPath;
             }
+            _raidIgnoreUrl = url + RaidIgnoreList.EndpointPath;
+            _raidImagesUrl = url + RaidImageUploader.EndpointPath;
             _userId = userId;
             _apiKey = txtApiKey.Text;
             return true;
@@ -419,6 +705,7 @@ namespace PlayerDBSync
             _settings.Url = txtUrl.Text.Trim();
             _settings.UserId = txtUserId.Text.Trim();
             _settings.SetApiKey(txtApiKey.Text);
+            _settings.RaidScreenshots = chkRaidScreenshots.Checked;
             try
             {
                 _settings.Save();
@@ -444,6 +731,8 @@ namespace PlayerDBSync
             {
                 job.Timer.Stop();
             }
+            ignoreTimer.Stop();
+            imagesTimer.Stop();
             _cts?.Cancel();
             SaveSettings();
         }
