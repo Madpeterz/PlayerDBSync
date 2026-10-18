@@ -62,6 +62,10 @@ namespace PlayerDBSync
 
         private IEnumerable<SyncJob> Jobs => [_players, _homes, _regrades, _raids];
 
+        // The PlayerDB addon keeps players, houses and regrades (once HomeDB and RegradeDB) side by side;
+        // each is synced if its folder is there.
+        private static readonly string[] PlayerDbDataFolders = [AppSettings.PlayersFolder, AppSettings.HousesFolder, AppSettings.RegradesFolder];
+
         public Form1()
         {
             InitializeComponent();
@@ -75,8 +79,6 @@ namespace PlayerDBSync
         private void Form1_Load(object? sender, EventArgs e)
         {
             txtFolder.Text = _settings.Folder;
-            txtHomeFolder.Text = _settings.HomeFolder;
-            txtRegradeFolder.Text = _settings.RegradeFolder;
             txtRaidFolder.Text = _settings.RaidFolder;
             txtUrl.Text = _settings.Url;
             txtUserId.Text = _settings.UserId;
@@ -89,13 +91,9 @@ namespace PlayerDBSync
             // Resume syncing automatically when a previous run left complete settings;
             // otherwise wait for the user to fill them in and press Start.
             var players = txtFolder.Text.Trim();
-            var home = txtHomeFolder.Text.Trim();
-            var regrade = txtRegradeFolder.Text.Trim();
             var raid = txtRaidFolder.Text.Trim();
-            if ((players.Length > 0 || home.Length > 0 || regrade.Length > 0 || raid.Length > 0)
-                && (players.Length == 0 || IsAddonFolder(players, AppSettings.PlayersFolder))
-                && (home.Length == 0 || IsAddonFolder(home, AppSettings.HousesFolder))
-                && (regrade.Length == 0 || IsAddonFolder(regrade, AppSettings.RegradesFolder))
+            if ((players.Length > 0 || raid.Length > 0)
+                && (players.Length == 0 || IsAddonFolder(players, PlayerDbDataFolders))
                 && (raid.Length == 0 || IsAddonFolder(raid, AppSettings.RaidsFolder))
                 && txtUrl.Text.Trim().Length > 0
                 && long.TryParse(txtUserId.Text.Trim(), out var id) && id > 0
@@ -107,25 +105,15 @@ namespace PlayerDBSync
 
         private void btnBrowse_Click(object? sender, EventArgs e)
         {
-            BrowseAddonFolder(txtFolder, "PlayerDB", AppSettings.PlayersFolder, AppSettings.DefaultFolder);
-        }
-
-        private void btnBrowseHome_Click(object? sender, EventArgs e)
-        {
-            BrowseAddonFolder(txtHomeFolder, "HomeDB", AppSettings.HousesFolder, "");
-        }
-
-        private void btnBrowseRegrade_Click(object? sender, EventArgs e)
-        {
-            BrowseAddonFolder(txtRegradeFolder, "RegradeDB", AppSettings.RegradesFolder, "");
+            BrowseAddonFolder(txtFolder, "PlayerDB", PlayerDbDataFolders, AppSettings.DefaultFolder);
         }
 
         private void btnBrowseRaid_Click(object? sender, EventArgs e)
         {
-            BrowseAddonFolder(txtRaidFolder, "RaidsDB", AppSettings.RaidsFolder, "");
+            BrowseAddonFolder(txtRaidFolder, "RaidsDB", [AppSettings.RaidsFolder], "");
         }
 
-        private void BrowseAddonFolder(TextBox box, string addonName, string dataFolder, string fallback)
+        private void BrowseAddonFolder(TextBox box, string addonName, string[] dataFolders, string fallback)
         {
             using var dialog = new FolderBrowserDialog
             {
@@ -141,15 +129,16 @@ namespace PlayerDBSync
             var path = dialog.SelectedPath;
             // Picking the data folder itself is an easy slip; use the addon folder above it.
             var parent = Path.GetDirectoryName(path);
-            if (!IsAddonFolder(path, dataFolder) && string.Equals(Path.GetFileName(path), dataFolder, StringComparison.OrdinalIgnoreCase)
-                && parent != null && IsAddonFolder(parent, dataFolder))
+            if (!IsAddonFolder(path, dataFolders)
+                && dataFolders.Contains(Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                && parent != null && IsAddonFolder(parent, dataFolders))
             {
                 path = parent;
             }
             box.Text = path;
-            if (!IsAddonFolder(path, dataFolder))
+            if (!IsAddonFolder(path, dataFolders))
             {
-                ShowError(NotAddonMessage(path, addonName, dataFolder), box);
+                ShowError(NotAddonMessage(path, addonName, dataFolders), box);
             }
         }
 
@@ -627,34 +616,22 @@ namespace PlayerDBSync
 
         private bool ValidateInputs()
         {
-            // Any folder may be left empty to skip that sync, but not all of them.
+            // Either folder may be left empty to skip that sync, but not both.
             var playersFolder = txtFolder.Text.Trim();
-            var homeFolder = txtHomeFolder.Text.Trim();
-            var regradeFolder = txtRegradeFolder.Text.Trim();
             var raidFolder = txtRaidFolder.Text.Trim();
-            if (playersFolder.Length == 0 && homeFolder.Length == 0 && regradeFolder.Length == 0 && raidFolder.Length == 0)
+            if (playersFolder.Length == 0 && raidFolder.Length == 0)
             {
-                ShowError("Select a PlayerDB, HomeDB, RegradeDB or RaidsDB addon folder to sync.", txtFolder);
+                ShowError("Select a PlayerDB or RaidsDB addon folder to sync.", txtFolder);
                 return false;
             }
-            if (playersFolder.Length > 0 && !IsAddonFolder(playersFolder, AppSettings.PlayersFolder))
+            if (playersFolder.Length > 0 && !IsAddonFolder(playersFolder, PlayerDbDataFolders))
             {
-                ShowError(NotAddonMessage(playersFolder, "PlayerDB", AppSettings.PlayersFolder), txtFolder);
-                return false;
-            }
-            if (homeFolder.Length > 0 && !IsAddonFolder(homeFolder, AppSettings.HousesFolder))
-            {
-                ShowError(NotAddonMessage(homeFolder, "HomeDB", AppSettings.HousesFolder), txtHomeFolder);
-                return false;
-            }
-            if (regradeFolder.Length > 0 && !IsAddonFolder(regradeFolder, AppSettings.RegradesFolder))
-            {
-                ShowError(NotAddonMessage(regradeFolder, "RegradeDB", AppSettings.RegradesFolder), txtRegradeFolder);
+                ShowError(NotAddonMessage(playersFolder, "PlayerDB", PlayerDbDataFolders), txtFolder);
                 return false;
             }
             if (raidFolder.Length > 0 && !IsAddonFolder(raidFolder, AppSettings.RaidsFolder))
             {
-                ShowError(NotAddonMessage(raidFolder, "RaidsDB", AppSettings.RaidsFolder), txtRaidFolder);
+                ShowError(NotAddonMessage(raidFolder, "RaidsDB", [AppSettings.RaidsFolder]), txtRaidFolder);
                 return false;
             }
 
@@ -678,10 +655,20 @@ namespace PlayerDBSync
             }
 
             txtUrl.Text = url;
-            _players.Folder = playersFolder.Length > 0 ? Path.Combine(playersFolder, AppSettings.PlayersFolder) : "";
-            _homes.Folder = homeFolder.Length > 0 ? Path.Combine(homeFolder, AppSettings.HousesFolder) : "";
-            _regrades.Folder = regradeFolder.Length > 0 ? Path.Combine(regradeFolder, AppSettings.RegradesFolder) : "";
-            _raids.Folder = raidFolder.Length > 0 ? Path.Combine(raidFolder, AppSettings.RaidsFolder) : "";
+            _players.Folder = DataFolder(playersFolder, AppSettings.PlayersFolder);
+            _homes.Folder = DataFolder(playersFolder, AppSettings.HousesFolder);
+            _regrades.Folder = DataFolder(playersFolder, AppSettings.RegradesFolder);
+            _raids.Folder = DataFolder(raidFolder, AppSettings.RaidsFolder);
+            if (playersFolder.Length > 0)
+            {
+                foreach (var (job, dataFolder) in new[] { (_players, AppSettings.PlayersFolder), (_homes, AppSettings.HousesFolder), (_regrades, AppSettings.RegradesFolder) })
+                {
+                    if (!job.Enabled)
+                    {
+                        Log($"{job.Name}: skipped, the PlayerDB addon has no {dataFolder} folder yet (stop and start again once it has)");
+                    }
+                }
+            }
             foreach (var job in Jobs)
             {
                 job.Url = url + job.EndpointPath;
@@ -693,11 +680,17 @@ namespace PlayerDBSync
             return true;
         }
 
-        private static bool IsAddonFolder(string path, string dataFolder) =>
-            File.Exists(Path.Combine(path, AppSettings.AddonMarkerFile)) && Directory.Exists(Path.Combine(path, dataFolder));
+        /// <summary>True if <paramref name="path"/> has the addon marker file and at least one of <paramref name="dataFolders"/>.</summary>
+        private static bool IsAddonFolder(string path, params string[] dataFolders) =>
+            File.Exists(Path.Combine(path, AppSettings.AddonMarkerFile)) && dataFolders.Any(d => Directory.Exists(Path.Combine(path, d)));
 
-        private static string NotAddonMessage(string path, string addonName, string dataFolder) =>
-            $"This doesn't look like the {addonName} addon folder:\n{path}\n\nIt should contain {AppSettings.AddonMarkerFile} and a {dataFolder} folder.";
+        /// <summary>The data folder to sync, or "" (skipped) when no addon folder is set or it hasn't that folder yet.</summary>
+        private static string DataFolder(string addonFolder, string dataFolder) =>
+            addonFolder.Length > 0 && Directory.Exists(Path.Combine(addonFolder, dataFolder)) ? Path.Combine(addonFolder, dataFolder) : "";
+
+        private static string NotAddonMessage(string path, string addonName, string[] dataFolders) =>
+            $"This doesn't look like the {addonName} addon folder:\n{path}\n\nIt should contain {AppSettings.AddonMarkerFile} and " +
+            (dataFolders.Length == 1 ? $"a {dataFolders[0]} folder." : $"a {string.Join(", ", dataFolders[..^1])} or {dataFolders[^1]} folder.");
 
         private void ShowError(string message, Control focus)
         {
@@ -709,10 +702,6 @@ namespace PlayerDBSync
         {
             txtFolder.Enabled = enabled;
             btnBrowse.Enabled = enabled;
-            txtHomeFolder.Enabled = enabled;
-            btnBrowseHome.Enabled = enabled;
-            txtRegradeFolder.Enabled = enabled;
-            btnBrowseRegrade.Enabled = enabled;
             txtRaidFolder.Enabled = enabled;
             btnBrowseRaid.Enabled = enabled;
             txtUrl.Enabled = enabled;
@@ -723,8 +712,6 @@ namespace PlayerDBSync
         private void SaveSettings()
         {
             _settings.Folder = txtFolder.Text.Trim();
-            _settings.HomeFolder = txtHomeFolder.Text.Trim();
-            _settings.RegradeFolder = txtRegradeFolder.Text.Trim();
             _settings.RaidFolder = txtRaidFolder.Text.Trim();
             _settings.Url = txtUrl.Text.Trim();
             _settings.UserId = txtUserId.Text.Trim();

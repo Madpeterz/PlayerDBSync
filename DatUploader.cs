@@ -13,7 +13,7 @@ namespace PlayerDBSync
     internal readonly record struct SyncResult(int Uploaded, bool StateChanged, string? Error);
 
     /// <summary>
-    ///  Scans a folder (PlayerDB Players, HomeDB Houses, RegradeDB Regrades or RaidsDB Raids) for changed *.dat files and pushes them to an API endpoint in batches.
+    ///  Scans a folder (PlayerDB Players, Houses or Regrades, or RaidsDB Raids) for changed *.dat files and pushes them to an API endpoint in batches.
     /// </summary>
     internal sealed class DatUploader
     {

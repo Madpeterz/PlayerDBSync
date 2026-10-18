@@ -28,10 +28,11 @@ namespace PlayerDBSync
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PlayerDBSync");
         private static readonly string SettingsPath = Path.Combine(SettingsDir, "settings.json");
 
-        /// <summary>The PlayerDB addon folder (earlier builds stored its Players subfolder; upgraded on load).</summary>
+        /// <summary>
+        ///  The PlayerDB addon folder, with its Players, Houses and Regrades (earlier builds stored its Players
+        ///  subfolder; upgraded on load). The separate HomeDB and RegradeDB folders of older builds are no longer read.
+        /// </summary>
         public string Folder { get; set; } = DefaultFolder;
-        public string HomeFolder { get; set; } = "";
-        public string RegradeFolder { get; set; } = "";
         public string RaidFolder { get; set; } = "";
         public string Url { get; set; } = DefaultUrl;
         public string UserId { get; set; } = "";
@@ -47,11 +48,11 @@ namespace PlayerDBSync
         public Dictionary<string, SyncRecord> SyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string SyncTarget { get; set; } = "";
 
-        /// <summary>As <see cref="SyncedFiles"/>/<see cref="SyncTarget"/>, for the HomeDB Houses folder.</summary>
+        /// <summary>As <see cref="SyncedFiles"/>/<see cref="SyncTarget"/>, for the PlayerDB Houses folder.</summary>
         public Dictionary<string, SyncRecord> HomeSyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string HomeSyncTarget { get; set; } = "";
 
-        /// <summary>As <see cref="SyncedFiles"/>/<see cref="SyncTarget"/>, for the RegradeDB Regrades folder.</summary>
+        /// <summary>As <see cref="SyncedFiles"/>/<see cref="SyncTarget"/>, for the PlayerDB Regrades folder.</summary>
         public Dictionary<string, SyncRecord> RegradeSyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string RegradeSyncTarget { get; set; } = "";
 
