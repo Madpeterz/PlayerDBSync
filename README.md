@@ -11,7 +11,7 @@ It watches the addons' data folders, and every 5 minutes uploads any files that 
 | PlayerDB  | `PlayerDB\Regrades`   | `<server>/api/regrades` |
 | RaidsDB   | `RaidsDB\Raids`       | `<server>/api/raids`    |
 
-You can sync either addon; leave the other empty. Houses and regrades used to come from the separate HomeDB and RegradeDB addons, which are now part of PlayerDB.
+You can sync either addon; leave the other empty. Houses and regrades used to come from the separate HomeDB and RegradeDB addons; both are now defunct, merged into PlayerDB (see [Upgrading from HomeDB and RegradeDB](#upgrading-from-homedb-and-regradedb)).
 
 ## Requirements
 
@@ -42,13 +42,15 @@ You can sync either addon; leave the other empty. Houses and regrades used to co
 
    If you pick the `Players`, `Houses`, `Regrades` or `Raids` folder by mistake, the app selects the addon folder above it for you.
 
+   Under each folder the addon's version is shown in green (e.g. `2.5.0`), read from `addon_version` in its most recently written data file. It's read again whenever the folder changes and after each upload, so it follows addon updates. Nothing is shown if the folder isn't an addon's yet, or if its newest five data files have no version.
+
 3. **Click Start.** The app uploads everything that isn't on the server yet, then checks for changes every 5 minutes. The log shows what it uploads.
 
 Next time you open the app, it starts syncing straight away with the saved settings. Click **Stop** to change them.
 
 ## How it works
 
-- Only changed files are uploaded. The app remembers what it has already sent, so restarting it doesn't upload everything again. Changing a folder, the server URL or the user ID does re-upload everything for that addon. (Moving from the separate HomeDB and RegradeDB addons to PlayerDB counts as a folder change, so houses and regrades are all uploaded once more.)
+- Only changed files are uploaded. The app remembers what it has already sent, so restarting it doesn't upload everything again. Changing a folder, the server URL or the user ID does re-upload everything for that addon.
 - Changed files are sent in batches of up to 500.
 - Bookkeeping files (`_count.dat`, `empty.keep`) are skipped.
 - Raids are uploaded once the recording is stopped and saved to `Raids`; a raid still being recorded isn't sent.
@@ -70,11 +72,47 @@ While RaidsDB is synced, the app downloads the server's list of raid items to ig
 
 ## Raid screenshots
 
-Tick **Save screenshot on RaidsDB request** to let the RaidsDB addon ask for screenshots. While syncing, the app checks every 2 seconds for `RaidsDB\Raids\request.sht`. When it finds one, it captures the `archeage.exe` window and deletes the request once the screenshot is saved. If the capture fails (for example the game is minimised), the request is kept and retried every 2 seconds.
+Tick **Save screenshot on RaidsDB request** to let the RaidsDB addon ask for screenshots. While syncing, the app checks every 2 seconds for `RaidsDB\Raids\request.sht`, which the addon writes like this:
 
-Screenshots are saved to `%TEMP%\PlayerDBSync\Screenshots`; the **Open folder** button next to the checkbox opens it in Explorer. They're named from the request: the raid's start time (`raid_started`), the number at the end of its `id` and its `reason`, so `raid_started = "1792312031"` with `id = "1792312031-2"` and `reason = "end"` is saved as `2026-10-18_08-27-11-2-end.webp`. A request with no reason (or one that isn't just letters and digits) leaves it off: `2026-10-18_08-27-11-2.webp`. A request that's only partly written (no closing `}` yet) is read again on the next check. If the request doesn't give the start time, the raid being recorded in `RaidsDB\current.dat` is used. If it doesn't give a number, the next unused one is taken, counting from 1; the last number used is kept in `last.txt` in the same folder, so a number isn't reused after its screenshot has been uploaded and deleted. They're saved as lossy WebP (quality 80) to keep uploads small; if that comes out over 390 KB it's re-encoded 5 quality lower at a time (no lower than 40) until it fits. Captures larger than 1920×1080 are scaled down to fit, keeping their aspect ratio. The start time is in UTC, the same as the addon's saved raid files. If no raid is recording, the current time is used.
+```lua
+{
+    raid_started = "1792312031",
+    id = "1792312031-2",
+    reason = "end",
+    -- …
+}
+```
 
-While RaidsDB is synced, the app uploads the screenshots in that folder every 30 seconds. When sync starts, any screenshot still waiting that's larger than 1920×1080 is scaled down first. Uploads go oldest first, up to 3 at a time. Once the server has a screenshot it's deleted, so anything left in the folder is still waiting to be sent. If the server rejects a screenshot (for example because it's too large), that file is skipped until it changes or the app is restarted. If the upload fails, it's tried again on the next 30-second tick.
+When it finds one, it captures the `archeage.exe` window and deletes the request once the screenshot is saved. If the capture fails (for example the game is minimised), the request is kept and retried every 2 seconds. A request that's only partly written (no closing `}` yet) is read again on the next check.
+
+Screenshots are saved to `%TEMP%\PlayerDBSync\Screenshots`. The **Open folder** button next to the checkbox opens it in Explorer.
+
+### File names
+
+A screenshot is named `<raid start>-<number>-<reason>.webp`, so the request above is saved as `2026-10-18_08-27-11-2-end.webp`:
+
+- **Raid start**: `raid_started`, in UTC, the same as the addon's saved raid files. If the request doesn't give it, the raid being recorded in `RaidsDB\current.dat` is used; if no raid is recording either, the current time.
+- **Number**: the number at the end of `id`. If the request doesn't give one, the next unused number is taken, counting from 1. The last number used is kept in `last.txt` in the screenshot folder, so a number isn't reused after its screenshot has been uploaded and deleted.
+- **Reason**: `reason` (e.g. `start`, `end`, `drop`), in lower case. It's left off if the request has none, or one that isn't just letters and digits: `2026-10-18_08-27-11-2.webp`.
+
+### Size
+
+Screenshots are saved as lossy WebP (quality 80) to keep uploads small. If that comes out over 390 KB, it's re-encoded 5 quality lower at a time (no lower than 40) until it fits; the server takes up to 400 KB. Captures larger than 1920×1080 are scaled down to fit, keeping their aspect ratio.
+
+### Uploading
+
+While RaidsDB is synced, the app uploads the screenshots in that folder every 30 seconds, oldest first, up to 3 at a time. When sync starts, any screenshot still waiting that's larger than 1920×1080 is scaled down first.
+
+- Once the server has a screenshot it's deleted, so anything left in the folder is still waiting to be sent.
+- If the server rejects a screenshot (for example because it's too large), that file is skipped until it changes or the app is restarted.
+- If the upload fails, it's tried again on the next 30-second tick.
+- If another recorder already uploaded a screenshot with the same number for that raid, the server gives yours the next free number and keeps its reason.
+
+## Upgrading from HomeDB and RegradeDB
+
+HomeDB and RegradeDB are defunct; their houses and regrades are now collected by PlayerDB, in its `Houses` and `Regrades` folders. This version of the app reads them from the **PlayerDB addon** folder and no longer has separate HomeDB and RegradeDB fields; folders saved for them by older versions are ignored.
+
+Because the folders have moved, the first sync after upgrading uploads every house and regrade file once more.
 
 ## Settings
 
@@ -87,6 +125,9 @@ Settings are saved in `%AppData%\PlayerDBSync\settings.json`. The API key is enc
 | *This doesn't look like the PlayerDB/RaidsDB addon folder* | Pick the addon's own folder, the one with `main.lua` in it. If the `Players`, `Houses`, `Regrades` or `Raids` folder doesn't exist yet, run the game with the addon enabled first so it creates it. |
 | *Server refused every upload … check the user ID, API key and PC clock* | Check your user ID and API key. Uploads are signed with your PC's time, so make sure Windows has the right time (Settings → Time & language → **Sync now**). |
 | *Failing (3x) – next try …* | The server is down or unreachable. The app keeps retrying on its own; check the Server URL if it never recovers. |
+| *Homes: skipped, the PlayerDB addon has no Houses folder yet* (or Players/Regrades) | The addon hasn't saved any of those yet. Play with the addon enabled until it creates the folder, then click **Stop** and **Start**. |
+| No version shown under a folder | The folder isn't an addon folder, or the addon hasn't written a data file with `addon_version` yet. Syncing still works. |
+| *Server rejected … not named \<raid start\>-\<n\>[-\<reason\>].webp* | A file in the screenshot folder wasn't saved by the app. Remove it from `%TEMP%\PlayerDBSync\Screenshots`. |
 
 ## Building from source
 

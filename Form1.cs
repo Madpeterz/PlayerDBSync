@@ -29,6 +29,9 @@ namespace PlayerDBSync
         // Mirrors the checkbox so the screenshot thread can read it.
         private volatile bool _screenshotsOn;
 
+        // Bumped on each version lookup, so a slow earlier one can't overwrite a newer result.
+        private int _versionLookup;
+
         // Snapshot of the credentials taken when sync starts, so edits to the boxes don't affect a running sync.
         private long _userId;
         private string _apiKey = "";
@@ -100,6 +103,27 @@ namespace PlayerDBSync
                 && txtApiKey.Text.Length > 0)
             {
                 btnStart_Click(this, EventArgs.Empty);
+            }
+        }
+
+        private async void txtAddonFolder_TextChanged(object? sender, EventArgs e)
+        {
+            await RefreshVersionsAsync();
+        }
+
+        /// <summary>Shows the addon_version from each addon's newest data file under its folder box.</summary>
+        private async Task RefreshVersionsAsync()
+        {
+            int lookup = ++_versionLookup;
+            var players = txtFolder.Text.Trim();
+            var raid = txtRaidFolder.Text.Trim();
+            var (playersVersion, raidVersion) = await Task.Run(() => (
+                AddonVersion.Newest(players, PlayerDbDataFolders),
+                AddonVersion.Newest(raid, [AppSettings.RaidsFolder])));
+            if (lookup == _versionLookup)
+            {
+                lblPlayerVersion.Text = playersVersion ?? "";
+                lblRaidVersion.Text = raidVersion ?? "";
             }
         }
 
@@ -530,6 +554,11 @@ namespace PlayerDBSync
                 if (result.StateChanged)
                 {
                     SaveSettings();
+                }
+                if (result.Uploaded > 0)
+                {
+                    // New files may come from an updated addon.
+                    await RefreshVersionsAsync();
                 }
 
                 if (result.Error == null)

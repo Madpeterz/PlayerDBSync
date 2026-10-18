@@ -32,9 +32,11 @@ namespace PlayerDBSync
             lblFolder = new Label();
             txtFolder = new TextBox();
             btnBrowse = new Button();
+            lblPlayerVersion = new Label();
             lblRaidFolder = new Label();
             txtRaidFolder = new TextBox();
             btnBrowseRaid = new Button();
+            lblRaidVersion = new Label();
             lblUrl = new Label();
             txtUrl = new TextBox();
             lblUserId = new Label();
@@ -70,6 +72,7 @@ namespace PlayerDBSync
             txtFolder.Name = "txtFolder";
             txtFolder.Size = new Size(381, 23);
             txtFolder.TabIndex = 1;
+            txtFolder.TextChanged += txtAddonFolder_TextChanged;
             //
             // btnBrowse
             //
@@ -82,10 +85,19 @@ namespace PlayerDBSync
             btnBrowse.UseVisualStyleBackColor = true;
             btnBrowse.Click += btnBrowse_Click;
             //
+            // lblPlayerVersion
+            //
+            lblPlayerVersion.AutoSize = true;
+            lblPlayerVersion.ForeColor = Color.ForestGreen;
+            lblPlayerVersion.Location = new Point(150, 37);
+            lblPlayerVersion.Name = "lblPlayerVersion";
+            lblPlayerVersion.Size = new Size(0, 15);
+            lblPlayerVersion.TabIndex = 17;
+            //
             // lblRaidFolder
             //
             lblRaidFolder.AutoSize = true;
-            lblRaidFolder.Location = new Point(12, 46);
+            lblRaidFolder.Location = new Point(12, 62);
             lblRaidFolder.Name = "lblRaidFolder";
             lblRaidFolder.Size = new Size(84, 15);
             lblRaidFolder.TabIndex = 3;
@@ -94,15 +106,16 @@ namespace PlayerDBSync
             // txtRaidFolder
             //
             txtRaidFolder.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtRaidFolder.Location = new Point(150, 42);
+            txtRaidFolder.Location = new Point(150, 58);
             txtRaidFolder.Name = "txtRaidFolder";
             txtRaidFolder.Size = new Size(381, 23);
             txtRaidFolder.TabIndex = 4;
+            txtRaidFolder.TextChanged += txtAddonFolder_TextChanged;
             //
             // btnBrowseRaid
             //
             btnBrowseRaid.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnBrowseRaid.Location = new Point(537, 41);
+            btnBrowseRaid.Location = new Point(537, 57);
             btnBrowseRaid.Name = "btnBrowseRaid";
             btnBrowseRaid.Size = new Size(85, 25);
             btnBrowseRaid.TabIndex = 5;
@@ -110,10 +123,19 @@ namespace PlayerDBSync
             btnBrowseRaid.UseVisualStyleBackColor = true;
             btnBrowseRaid.Click += btnBrowseRaid_Click;
             //
+            // lblRaidVersion
+            //
+            lblRaidVersion.AutoSize = true;
+            lblRaidVersion.ForeColor = Color.ForestGreen;
+            lblRaidVersion.Location = new Point(150, 83);
+            lblRaidVersion.Name = "lblRaidVersion";
+            lblRaidVersion.Size = new Size(0, 15);
+            lblRaidVersion.TabIndex = 18;
+            //
             // lblUrl
             //
             lblUrl.AutoSize = true;
-            lblUrl.Location = new Point(12, 76);
+            lblUrl.Location = new Point(12, 108);
             lblUrl.Name = "lblUrl";
             lblUrl.Size = new Size(64, 15);
             lblUrl.TabIndex = 6;
@@ -122,7 +144,7 @@ namespace PlayerDBSync
             // txtUrl
             //
             txtUrl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtUrl.Location = new Point(150, 72);
+            txtUrl.Location = new Point(150, 104);
             txtUrl.Name = "txtUrl";
             txtUrl.Size = new Size(472, 23);
             txtUrl.TabIndex = 7;
@@ -130,7 +152,7 @@ namespace PlayerDBSync
             // lblUserId
             //
             lblUserId.AutoSize = true;
-            lblUserId.Location = new Point(12, 106);
+            lblUserId.Location = new Point(12, 138);
             lblUserId.Name = "lblUserId";
             lblUserId.Size = new Size(47, 15);
             lblUserId.TabIndex = 8;
@@ -138,7 +160,7 @@ namespace PlayerDBSync
             //
             // txtUserId
             //
-            txtUserId.Location = new Point(150, 102);
+            txtUserId.Location = new Point(150, 134);
             txtUserId.Name = "txtUserId";
             txtUserId.Size = new Size(120, 23);
             txtUserId.TabIndex = 9;
@@ -146,7 +168,7 @@ namespace PlayerDBSync
             // lblApiKey
             //
             lblApiKey.AutoSize = true;
-            lblApiKey.Location = new Point(12, 136);
+            lblApiKey.Location = new Point(12, 168);
             lblApiKey.Name = "lblApiKey";
             lblApiKey.Size = new Size(50, 15);
             lblApiKey.TabIndex = 10;
@@ -155,7 +177,7 @@ namespace PlayerDBSync
             // txtApiKey
             //
             txtApiKey.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtApiKey.Location = new Point(150, 132);
+            txtApiKey.Location = new Point(150, 164);
             txtApiKey.Name = "txtApiKey";
             txtApiKey.Size = new Size(472, 23);
             txtApiKey.TabIndex = 11;
@@ -164,7 +186,7 @@ namespace PlayerDBSync
             // chkRaidScreenshots
             //
             chkRaidScreenshots.AutoSize = true;
-            chkRaidScreenshots.Location = new Point(150, 164);
+            chkRaidScreenshots.Location = new Point(150, 196);
             chkRaidScreenshots.Name = "chkRaidScreenshots";
             chkRaidScreenshots.Size = new Size(230, 19);
             chkRaidScreenshots.TabIndex = 12;
@@ -174,7 +196,7 @@ namespace PlayerDBSync
             //
             // btnOpenScreenshots
             //
-            btnOpenScreenshots.Location = new Point(386, 161);
+            btnOpenScreenshots.Location = new Point(386, 193);
             btnOpenScreenshots.Name = "btnOpenScreenshots";
             btnOpenScreenshots.Size = new Size(85, 25);
             btnOpenScreenshots.TabIndex = 13;
@@ -184,7 +206,7 @@ namespace PlayerDBSync
             //
             // btnStart
             //
-            btnStart.Location = new Point(150, 192);
+            btnStart.Location = new Point(150, 224);
             btnStart.Name = "btnStart";
             btnStart.Size = new Size(100, 28);
             btnStart.TabIndex = 14;
@@ -195,7 +217,7 @@ namespace PlayerDBSync
             // lblStatus
             //
             lblStatus.AutoSize = true;
-            lblStatus.Location = new Point(260, 192);
+            lblStatus.Location = new Point(260, 224);
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(51, 15);
             lblStatus.TabIndex = 15;
@@ -204,7 +226,7 @@ namespace PlayerDBSync
             // txtLog
             //
             txtLog.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            txtLog.Location = new Point(12, 246);
+            txtLog.Location = new Point(12, 278);
             txtLog.Multiline = true;
             txtLog.Name = "txtLog";
             txtLog.ReadOnly = true;
@@ -246,7 +268,7 @@ namespace PlayerDBSync
             //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(634, 535);
+            ClientSize = new Size(634, 567);
             Controls.Add(txtLog);
             Controls.Add(lblStatus);
             Controls.Add(btnStart);
@@ -261,6 +283,8 @@ namespace PlayerDBSync
             Controls.Add(btnBrowseRaid);
             Controls.Add(txtRaidFolder);
             Controls.Add(lblRaidFolder);
+            Controls.Add(lblRaidVersion);
+            Controls.Add(lblPlayerVersion);
             Controls.Add(btnBrowse);
             Controls.Add(txtFolder);
             Controls.Add(lblFolder);
@@ -279,7 +303,9 @@ namespace PlayerDBSync
         private Label lblFolder;
         private TextBox txtFolder;
         private Button btnBrowse;
+        private Label lblPlayerVersion;
         private Label lblRaidFolder;
+        private Label lblRaidVersion;
         private TextBox txtRaidFolder;
         private Button btnBrowseRaid;
         private Label lblUrl;
