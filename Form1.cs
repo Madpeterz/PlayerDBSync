@@ -420,6 +420,92 @@ namespace PlayerDBSync
             }
         }
 
+        /// <summary>
+        ///  Moves the addons' *.dat files (Players, Houses, Regrades, Raids) to the Recycle Bin, so files saved by an
+        ///  addon version the server doesn't take stop failing every sync. Their sync records go too.
+        /// </summary>
+        private async void btnClearData_Click(object? sender, EventArgs e)
+        {
+            var players = txtFolder.Text.Trim();
+            var raid = txtRaidFolder.Text.Trim();
+            var folders = new[]
+                {
+                    (Job: _players, Path: DataFolder(players, AppSettings.PlayersFolder)),
+                    (Job: _homes, Path: DataFolder(players, AppSettings.HousesFolder)),
+                    (Job: _regrades, Path: DataFolder(players, AppSettings.RegradesFolder)),
+                    (Job: _raids, Path: DataFolder(raid, AppSettings.RaidsFolder)),
+                }
+                .Where(f => f.Path.Length > 0)
+                .Select(f => (f.Job, f.Path, Files: Directory.GetFiles(f.Path, "*.dat", SearchOption.TopDirectoryOnly)))
+                .ToList();
+            int total = folders.Sum(f => f.Files.Length);
+            if (total == 0)
+            {
+                MessageBox.Show(this, "There are no addon data files to clear.", "PlayerDB Sync", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // The addons would save their old data straight back if they're still running in the game.
+            var clean = new TaskDialogButton("Clean");
+            var nevermind = new TaskDialogButton("Nevermind");
+            var confirm = new TaskDialogPage
+            {
+                Caption = "Clear addon data",
+                Heading = "Please make sure you have disabled the addons and reloaded if you are ingame first",
+                Text = $"{total} addon data file{(total == 1 ? "" : "s")} will be moved to the Recycle Bin:\n\n"
+                    + string.Join("\n", folders.Where(f => f.Files.Length > 0).Select(f => $"{f.Path}: {f.Files.Length}"))
+                    + "\n\nThe addons start collecting again from scratch.",
+                Icon = TaskDialogIcon.Warning,
+                Buttons = { clean, nevermind },
+                DefaultButton = nevermind,
+            };
+            if (TaskDialog.ShowDialog(this, confirm) != clean)
+            {
+                return;
+            }
+
+            int cleared = 0;
+            var failed = new List<string>();
+            foreach (var (job, _, files) in folders)
+            {
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(file,
+                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                        cleared++;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException)
+                    {
+                        failed.Add($"{Path.GetFileName(file)}: {ex.Message}");
+                    }
+                }
+                // Anything collected from now on is new, whatever its file is called.
+                job.SyncedFiles.Clear();
+                job.Uploader.ResetCache();
+            }
+            SaveSettings();
+
+            Log($"Cleared {cleared} addon data file{(cleared == 1 ? "" : "s")} (moved to the Recycle Bin)");
+            foreach (var failure in failed)
+            {
+                Log($"Couldn't clear {failure}");
+            }
+            await RefreshVersionsAsync();
+
+            TaskDialog.ShowDialog(this, new TaskDialogPage
+            {
+                Caption = "Clear addon data",
+                Heading = "Please re-enable your addons",
+                Text = $"Cleared {cleared} addon data file{(cleared == 1 ? "" : "s")} (moved to the Recycle Bin)."
+                    + (failed.Count > 0 ? $"\n\n{failed.Count} couldn't be cleared; the log says why." : ""),
+                Icon = failed.Count > 0 ? TaskDialogIcon.Warning : TaskDialogIcon.Information,
+                Buttons = { TaskDialogButton.OK },
+            });
+        }
+
         private void btnOpenScreenshots_Click(object? sender, EventArgs e)
         {
             try
@@ -733,6 +819,7 @@ namespace PlayerDBSync
             btnBrowse.Enabled = enabled;
             txtRaidFolder.Enabled = enabled;
             btnBrowseRaid.Enabled = enabled;
+            btnClearData.Enabled = enabled;
             txtUrl.Enabled = enabled;
             txtUserId.Enabled = enabled;
             txtApiKey.Enabled = enabled;

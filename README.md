@@ -57,6 +57,14 @@ Next time you open the app, it starts syncing straight away with the saved setti
 - If the server can't be reached or refuses an upload, the app waits longer between attempts (5, 10, 20, then 30 minutes) and logs the error once instead of every time. Each addon retries on its own, so a problem with one doesn't hold up the others.
 - If the server rejects one particular file, that file is skipped until it changes or the app is restarted.
 
+## Clearing addon data
+
+If the addons were updated to a version the server doesn't take yet, the files they saved are rejected on every sync. **Clear addon data…** (next to **Start**, while stopped) gets rid of them:
+
+- It moves every `*.dat` file in `PlayerDB\Players`, `PlayerDB\Houses`, `PlayerDB\Regrades` and `RaidsDB\Raids` to the Recycle Bin, so they can be restored. This includes the addons' `_count.dat`. The folders and any other files are left alone.
+- It first asks you to disable the addons (and reload, if you're in the game), as they'd otherwise save their old data straight back, and shows how many files each folder has. Click **Clean** to go ahead or **Nevermind** to leave everything as it is. Once it's done, it reminds you to re-enable the addons.
+- The app forgets what it uploaded from those folders, so everything the addons collect from then on is uploaded as new.
+
 ## Raid item ignore list
 
 While RaidsDB is synced, the app downloads the server's list of raid items to ignore when it starts syncing and then every 15 minutes, and saves it as `RaidsDB\ignore.dat` for the addon to read. The file is only rewritten when the list changes:

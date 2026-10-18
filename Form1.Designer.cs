@@ -46,6 +46,7 @@ namespace PlayerDBSync
             chkRaidScreenshots = new CheckBox();
             btnOpenScreenshots = new Button();
             btnStart = new Button();
+            btnClearData = new Button();
             lblStatus = new Label();
             txtLog = new TextBox();
             syncTimer = new System.Windows.Forms.Timer(components);
@@ -214,6 +215,16 @@ namespace PlayerDBSync
             btnStart.UseVisualStyleBackColor = true;
             btnStart.Click += btnStart_Click;
             //
+            // btnClearData
+            //
+            btnClearData.Location = new Point(12, 224);
+            btnClearData.Name = "btnClearData";
+            btnClearData.Size = new Size(130, 28);
+            btnClearData.TabIndex = 19;
+            btnClearData.Text = "Clear addon data…";
+            btnClearData.UseVisualStyleBackColor = true;
+            btnClearData.Click += btnClearData_Click;
+            //
             // lblStatus
             //
             lblStatus.AutoSize = true;
@@ -272,6 +283,7 @@ namespace PlayerDBSync
             Controls.Add(txtLog);
             Controls.Add(lblStatus);
             Controls.Add(btnStart);
+            Controls.Add(btnClearData);
             Controls.Add(btnOpenScreenshots);
             Controls.Add(chkRaidScreenshots);
             Controls.Add(txtApiKey);
@@ -317,6 +329,7 @@ namespace PlayerDBSync
         private CheckBox chkRaidScreenshots;
         private Button btnOpenScreenshots;
         private Button btnStart;
+        private Button btnClearData;
         private Label lblStatus;
         private TextBox txtLog;
         private System.Windows.Forms.Timer syncTimer;
