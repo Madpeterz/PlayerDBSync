@@ -48,6 +48,7 @@ namespace PlayerDBSync
             lblApiKey = new Label();
             txtApiKey = new TextBox();
             chkRaidScreenshots = new CheckBox();
+            btnOpenScreenshots = new Button();
             btnStart = new Button();
             lblStatus = new Label();
             txtLog = new TextBox();
@@ -233,12 +234,22 @@ namespace PlayerDBSync
             chkRaidScreenshots.UseVisualStyleBackColor = true;
             chkRaidScreenshots.CheckedChanged += chkRaidScreenshots_CheckedChanged;
             //
+            // btnOpenScreenshots
+            //
+            btnOpenScreenshots.Location = new Point(386, 221);
+            btnOpenScreenshots.Name = "btnOpenScreenshots";
+            btnOpenScreenshots.Size = new Size(85, 25);
+            btnOpenScreenshots.TabIndex = 19;
+            btnOpenScreenshots.Text = "Open folder";
+            btnOpenScreenshots.UseVisualStyleBackColor = true;
+            btnOpenScreenshots.Click += btnOpenScreenshots_Click;
+            //
             // btnStart
             //
             btnStart.Location = new Point(150, 252);
             btnStart.Name = "btnStart";
             btnStart.Size = new Size(100, 28);
-            btnStart.TabIndex = 19;
+            btnStart.TabIndex = 20;
             btnStart.Text = "Start";
             btnStart.UseVisualStyleBackColor = true;
             btnStart.Click += btnStart_Click;
@@ -249,7 +260,7 @@ namespace PlayerDBSync
             lblStatus.Location = new Point(260, 252);
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(51, 15);
-            lblStatus.TabIndex = 20;
+            lblStatus.TabIndex = 21;
             lblStatus.Text = "Stopped";
             //
             // txtLog
@@ -261,7 +272,7 @@ namespace PlayerDBSync
             txtLog.ReadOnly = true;
             txtLog.ScrollBars = ScrollBars.Vertical;
             txtLog.Size = new Size(610, 277);
-            txtLog.TabIndex = 21;
+            txtLog.TabIndex = 22;
             //
             // syncTimer
             //
@@ -301,6 +312,7 @@ namespace PlayerDBSync
             Controls.Add(txtLog);
             Controls.Add(lblStatus);
             Controls.Add(btnStart);
+            Controls.Add(btnOpenScreenshots);
             Controls.Add(chkRaidScreenshots);
             Controls.Add(txtApiKey);
             Controls.Add(lblApiKey);
@@ -351,6 +363,7 @@ namespace PlayerDBSync
         private Label lblApiKey;
         private TextBox txtApiKey;
         private CheckBox chkRaidScreenshots;
+        private Button btnOpenScreenshots;
         private Button btnStart;
         private Label lblStatus;
         private TextBox txtLog;

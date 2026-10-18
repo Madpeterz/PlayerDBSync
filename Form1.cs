@@ -407,6 +407,20 @@ namespace PlayerDBSync
             }
         }
 
+        private void btnOpenScreenshots_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                // Created if no screenshot has been saved yet, so there's always something to open.
+                Directory.CreateDirectory(RaidScreenshot.OutputFolder);
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(RaidScreenshot.OutputFolder) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Log($"Couldn't open the screenshot folder: {ex.Message}");
+            }
+        }
+
         /// <summary>
         ///  The screenshot thread: checks for request.sht every <see cref="ScreenshotCheckInterval"/> and answers it.
         ///  Capturing, encoding and file work all happen here, never on the UI thread.
@@ -439,26 +453,36 @@ namespace PlayerDBSync
                 string error;
                 try
                 {
-                    var (image, captureError) = RaidScreenshot.CaptureGame();
-                    if (image != null)
+                    var request = RaidScreenshot.ReadRequest(raidsFolder);
+                    if (request == null)
                     {
-                        using (image)
-                        {
-                            var name = RaidScreenshot.RaidStartName(addonFolder);
-                            if (name == null)
-                            {
-                                LogFromThread("Screenshot: no raid is recording in current.dat, naming it after the current time");
-                                name = RaidScreenshot.FileStamp(DateTime.UtcNow);
-                            }
-                            var path = RaidScreenshot.NextPath(name);
-                            RaidScreenshot.SaveWebp(image, path);
-                            LogFromThread($"Screenshot saved: {path}");
-                        }
-                        lastError = null;
-                        requestAnswered = !RaidScreenshot.TryRemoveRequest(raidsFolder);
-                        continue;
+                        // Most likely the game is still writing it; read again next check.
+                        error = "Screenshot requested but request.sht couldn't be read yet – retrying";
                     }
-                    error = $"Screenshot requested but {captureError} – retrying";
+                    else
+                    {
+                        var (image, captureError) = RaidScreenshot.CaptureGame();
+                        if (image != null)
+                        {
+                            using (image)
+                            {
+                                // The request names the raid; older requests don't, so fall back to current.dat.
+                                var name = request.Value.RaidStart ?? RaidScreenshot.RaidStartName(addonFolder);
+                                if (name == null)
+                                {
+                                    LogFromThread("Screenshot: no raid is recording in current.dat, naming it after the current time");
+                                    name = RaidScreenshot.FileStamp(DateTime.UtcNow);
+                                }
+                                var path = RaidScreenshot.NextPath(name, request.Value.Number, request.Value.Reason);
+                                RaidScreenshot.SaveWebp(image, path);
+                                LogFromThread($"Screenshot saved: {path}");
+                            }
+                            lastError = null;
+                            requestAnswered = !RaidScreenshot.TryRemoveRequest(raidsFolder);
+                            continue;
+                        }
+                        error = $"Screenshot requested but {captureError} – retrying";
+                    }
                 }
                 catch (Exception ex)
                 {

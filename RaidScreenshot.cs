@@ -21,6 +21,11 @@ namespace PlayerDBSync
         // Lossy WebP: a fraction of the size of PNG for game screenshots, with no visible loss at this quality.
         private const int WebpQuality = 80;
 
+        // A screenshot encoding larger than this is redone at lower quality, a step at a time, until it fits.
+        private const long MaxFileBytes = 390 * 1024;
+        private const int WebpQualityStep = 5;
+        private const int MinWebpQuality = 40;
+
         // Larger captures are scaled down to fit, which keeps them well inside the server's size limit.
         public const int MaxWidth = 1920;
         public const int MaxHeight = 1080;
@@ -31,8 +36,48 @@ namespace PlayerDBSync
         private static readonly Regex StartedPattern = new(@"\bstarted\s*=\s*""(\d+)""");
         private static readonly Regex RecordingPattern = new(@"\brecording\s*=\s*true\b");
 
+        // request.sht names the raid and which of its screenshots this is: raid_started = "1792312031", id = "1792312031-2",
+        private static readonly Regex RequestStartedPattern = new(@"\braid_started\s*=\s*""(\d+)""");
+        private static readonly Regex RequestIdPattern = new(@"\bid\s*=\s*""\d+-(\d+)""");
+        // ...and why it was taken: reason = "end", (letters and digits only, as it goes into the file name)
+        private static readonly Regex RequestReasonPattern = new(@"\breason\s*=\s*""([A-Za-z0-9]{1,20})""");
+
         /// <summary>True if the addon is asking for a screenshot.</summary>
         public static bool HasRequest(string raidsFolder) => File.Exists(Path.Combine(raidsFolder, RequestFile));
+
+        /// <summary>
+        ///  What request.sht says about the screenshot: the raid's start as a file stamp, the screenshot's number and
+        ///  the reason (lower case), each null if it doesn't say. Null if the request can't be read yet or isn't fully
+        ///  written (no closing brace).
+        /// </summary>
+        public static (string? RaidStart, int? Number, string? Reason)? ReadRequest(string raidsFolder)
+        {
+            string text;
+            try
+            {
+                using var fs = new FileStream(Path.Combine(raidsFolder, RequestFile), FileMode.Open, FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(fs);
+                text = reader.ReadToEnd();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+            if (!text.TrimEnd().EndsWith('}'))
+            {
+                return null;
+            }
+
+            var started = RequestStartedPattern.Match(text);
+            var id = RequestIdPattern.Match(text);
+            string? raidStart = started.Success && long.TryParse(started.Groups[1].Value, out var unix)
+                ? FileStamp(DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime)
+                : null;
+            int? number = id.Success && int.TryParse(id.Groups[1].Value, out var n) && n > 0 ? n : null;
+            var reason = RequestReasonPattern.Match(text);
+            return (raidStart, number, reason.Success ? reason.Groups[1].Value.ToLowerInvariant() : null);
+        }
 
         /// <summary>
         ///  Removes the request once its screenshot is saved. False if it can't be deleted yet (the game mid-write).
@@ -82,19 +127,52 @@ namespace PlayerDBSync
         public static string FileStamp(DateTime time) => time.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
 
         /// <summary>
-        ///  The first unused "&lt;baseName&gt;-N.webp" in <see cref="OutputFolder"/>, counting from 1. Uploaded images
-        ///  are deleted, so a number can come round again; the server gives a clash the next number free.
+        ///  "&lt;baseName&gt;-N-&lt;reason&gt;.webp" in <see cref="OutputFolder"/>, or "&lt;baseName&gt;-N.webp" with no reason.
+        ///  N is <paramref name="number"/> when the request gives one (a file already there is the same request again,
+        ///  so it's replaced); otherwise the next number with no file, whatever its reason, counting from 1. Uploaded
+        ///  images are deleted, so the last number used for the raid is kept in <see cref="LastNumberFile"/>; otherwise
+        ///  a new screenshot would take the number of one just uploaded.
         /// </summary>
-        public static string NextPath(string baseName)
+        public static string NextPath(string baseName, int? number = null, string? reason = null)
         {
             Directory.CreateDirectory(OutputFolder);
-            for (int n = 1; ; n++)
+            int last = LastNumber(baseName);
+            int n = number ?? last + 1;
+            while (number == null && NumberTaken(baseName, n))
             {
-                var path = Path.Combine(OutputFolder, $"{baseName}-{n}.webp");
-                if (!File.Exists(path))
-                {
-                    return path;
-                }
+                n++;
+            }
+            var path = Path.Combine(OutputFolder, reason == null ? $"{baseName}-{n}.webp" : $"{baseName}-{n}-{reason}.webp");
+            try
+            {
+                File.WriteAllText(Path.Combine(OutputFolder, LastNumberFile), $"{baseName} {Math.Max(n, last)}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Only risks a repeated name, which the server gives the next number free.
+            }
+            return path;
+        }
+
+        /// <summary>True if a screenshot numbered <paramref name="n"/> is waiting, with or without a reason.</summary>
+        private static bool NumberTaken(string baseName, int n) =>
+            File.Exists(Path.Combine(OutputFolder, $"{baseName}-{n}.webp")) ||
+            Directory.EnumerateFiles(OutputFolder, $"{baseName}-{n}-*.webp").Any();
+
+        // "2026-10-17_19-07-20 3": the raid last screenshotted and the number its last screenshot got.
+        private const string LastNumberFile = "last.txt";
+
+        /// <summary>The number given to <paramref name="baseName"/>'s last screenshot; 0 if it has none.</summary>
+        private static int LastNumber(string baseName)
+        {
+            try
+            {
+                var parts = File.ReadAllText(Path.Combine(OutputFolder, LastNumberFile)).Trim().Split(' ');
+                return parts.Length == 2 && parts[0] == baseName && int.TryParse(parts[1], out var n) ? n : 0;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return 0;
             }
         }
 
@@ -229,11 +307,10 @@ namespace PlayerDBSync
 
         private static SKData? EncodeWebp(SKPixmap pixmap)
         {
-            var options = new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossy, WebpQuality);
             var scale = Scale(pixmap.Width, pixmap.Height);
             if (scale >= 1.0)
             {
-                return pixmap.Encode(options);
+                return EncodeWithinSize(pixmap);
             }
 
             // Keeps the aspect ratio: 2560x1440 becomes 1920x1080, an ultrawide 3440x1440 1920x804.
@@ -245,7 +322,24 @@ namespace PlayerDBSync
             {
                 throw new InvalidOperationException("Resizing the screenshot failed");
             }
-            return scaledPixels.Encode(options);
+            return EncodeWithinSize(scaledPixels);
+        }
+
+        /// <summary>
+        ///  Encodes at <see cref="WebpQuality"/>, then 5 lower each time the result is over <see cref="MaxFileBytes"/>,
+        ///  down to <see cref="MinWebpQuality"/>. Always encodes from the original pixels, so quality isn't lost twice.
+        /// </summary>
+        private static SKData? EncodeWithinSize(SKPixmap pixmap)
+        {
+            for (int quality = WebpQuality; ; quality -= WebpQualityStep)
+            {
+                var webp = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossy, quality));
+                if (webp == null || webp.Size <= MaxFileBytes || quality - WebpQualityStep < MinWebpQuality)
+                {
+                    return webp;
+                }
+                webp.Dispose();
+            }
         }
 
         /// <summary>Written to a temp file first, so the finished file never appears half-written.</summary>
