@@ -28,6 +28,7 @@ namespace PlayerDBSync
                     .Select(d => new DirectoryInfo(Path.Combine(addonFolder, d)))
                     .Where(d => d.Exists)
                     .SelectMany(d => d.EnumerateFiles("*.dat", SearchOption.TopDirectoryOnly))
+                    .Where(f => !DatUploader.IsIgnored(f.Name))
                     .OrderByDescending(f => f.LastWriteTimeUtc)
                     .Take(FilesToTry);
                 foreach (var file in files)

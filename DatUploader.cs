@@ -13,7 +13,7 @@ namespace PlayerDBSync
     internal readonly record struct SyncResult(int Uploaded, bool StateChanged, string? Error);
 
     /// <summary>
-    ///  Scans a folder (PlayerDB Players, Houses or Regrades, or RaidsDB Raids) for changed *.dat files and pushes them to an API endpoint in batches.
+    ///  Scans a folder (PlayerDB Players, Houses, Regrades or Inventory, or RaidsDB Raids) for changed *.dat files and pushes them to an API endpoint in batches.
     /// </summary>
     internal sealed class DatUploader
     {
@@ -22,7 +22,10 @@ namespace PlayerDBSync
         private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(100) };
 
         // Bookkeeping files the addons keep next to their records.
-        private static readonly HashSet<string> IgnoredFiles = new(StringComparer.OrdinalIgnoreCase) { "_count.dat" };
+        private static readonly HashSet<string> IgnoredFiles = new(StringComparer.OrdinalIgnoreCase) { "_count.dat", "_files.dat" };
+
+        /// <summary>True for a bookkeeping file that is never uploaded (or read for its version).</summary>
+        public static bool IsIgnored(string path) => IgnoredFiles.Contains(Path.GetFileName(path));
 
         private readonly Action<string> _log;
 

@@ -52,6 +52,7 @@ namespace PlayerDBSync
             syncTimer = new System.Windows.Forms.Timer(components);
             homesTimer = new System.Windows.Forms.Timer(components);
             regradesTimer = new System.Windows.Forms.Timer(components);
+            inventoryTimer = new System.Windows.Forms.Timer(components);
             raidsTimer = new System.Windows.Forms.Timer(components);
             ignoreTimer = new System.Windows.Forms.Timer(components);
             imagesTimer = new System.Windows.Forms.Timer(components);
@@ -260,6 +261,11 @@ namespace PlayerDBSync
             regradesTimer.Interval = 300000;
             regradesTimer.Tick += regradesTimer_Tick;
             //
+            // inventoryTimer
+            //
+            inventoryTimer.Interval = 300000;
+            inventoryTimer.Tick += inventoryTimer_Tick;
+            //
             // raidsTimer
             //
             raidsTimer.Interval = 300000;
@@ -335,6 +341,7 @@ namespace PlayerDBSync
         private System.Windows.Forms.Timer syncTimer;
         private System.Windows.Forms.Timer homesTimer;
         private System.Windows.Forms.Timer regradesTimer;
+        private System.Windows.Forms.Timer inventoryTimer;
         private System.Windows.Forms.Timer raidsTimer;
         private System.Windows.Forms.Timer ignoreTimer;
         private System.Windows.Forms.Timer imagesTimer;

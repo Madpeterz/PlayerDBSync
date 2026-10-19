@@ -10,6 +10,7 @@ namespace PlayerDBSync
         private readonly SyncJob _players;
         private readonly SyncJob _homes;
         private readonly SyncJob _regrades;
+        private readonly SyncJob _inventory;
         private readonly SyncJob _raids;
         private CancellationTokenSource? _cts;
 
@@ -63,11 +64,12 @@ namespace PlayerDBSync
             public string? LastError { get; set; }
         }
 
-        private IEnumerable<SyncJob> Jobs => [_players, _homes, _regrades, _raids];
+        private IEnumerable<SyncJob> Jobs => [_players, _homes, _regrades, _inventory, _raids];
 
-        // The PlayerDB addon keeps players, houses and regrades (once HomeDB and RegradeDB) side by side;
+        // The PlayerDB addon keeps players, houses, regrades (once HomeDB and RegradeDB) and inventory side by side;
         // each is synced if its folder is there.
-        private static readonly string[] PlayerDbDataFolders = [AppSettings.PlayersFolder, AppSettings.HousesFolder, AppSettings.RegradesFolder];
+        private static readonly string[] PlayerDbDataFolders =
+            [AppSettings.PlayersFolder, AppSettings.HousesFolder, AppSettings.RegradesFolder, AppSettings.InventoryFolder];
 
         public Form1()
         {
@@ -75,6 +77,7 @@ namespace PlayerDBSync
             _players = new SyncJob("Players", "/api/players", syncTimer, new DatUploader(m => Log($"Players: {m}")), _settings.SyncedFiles);
             _homes = new SyncJob("Homes", "/api/homes", homesTimer, new DatUploader(m => Log($"Homes: {m}")), _settings.HomeSyncedFiles);
             _regrades = new SyncJob("Regrades", "/api/regrades", regradesTimer, new DatUploader(m => Log($"Regrades: {m}")), _settings.RegradeSyncedFiles);
+            _inventory = new SyncJob("Inventory", "/api/inventory", inventoryTimer, new DatUploader(m => Log($"Inventory: {m}")), _settings.InventorySyncedFiles);
             _raids = new SyncJob("Raids", "/api/raids", raidsTimer, new DatUploader(m => Log($"Raids: {m}")), _settings.RaidSyncedFiles);
             _imageUploader = new RaidImageUploader(m => Log($"Screenshots: {m}"));
         }
@@ -184,6 +187,7 @@ namespace PlayerDBSync
             _settings.SyncTarget = Retarget(_players, _settings.SyncTarget);
             _settings.HomeSyncTarget = Retarget(_homes, _settings.HomeSyncTarget);
             _settings.RegradeSyncTarget = Retarget(_regrades, _settings.RegradeSyncTarget);
+            _settings.InventorySyncTarget = Retarget(_inventory, _settings.InventorySyncTarget);
             _settings.RaidSyncTarget = Retarget(_raids, _settings.RaidSyncTarget);
 
             _cts = new CancellationTokenSource();
@@ -268,6 +272,11 @@ namespace PlayerDBSync
         private async void regradesTimer_Tick(object? sender, EventArgs e)
         {
             await RunSyncAsync(_regrades);
+        }
+
+        private async void inventoryTimer_Tick(object? sender, EventArgs e)
+        {
+            await RunSyncAsync(_inventory);
         }
 
         private async void raidsTimer_Tick(object? sender, EventArgs e)
@@ -421,7 +430,7 @@ namespace PlayerDBSync
         }
 
         /// <summary>
-        ///  Moves the addons' *.dat files (Players, Houses, Regrades, Raids) to the Recycle Bin, so files saved by an
+        ///  Moves the addons' *.dat files (Players, Houses, Regrades, Inventory, Raids) to the Recycle Bin, so files saved by an
         ///  addon version the server doesn't take stop failing every sync. Their sync records go too.
         /// </summary>
         private async void btnClearData_Click(object? sender, EventArgs e)
@@ -433,6 +442,7 @@ namespace PlayerDBSync
                     (Job: _players, Path: DataFolder(players, AppSettings.PlayersFolder)),
                     (Job: _homes, Path: DataFolder(players, AppSettings.HousesFolder)),
                     (Job: _regrades, Path: DataFolder(players, AppSettings.RegradesFolder)),
+                    (Job: _inventory, Path: DataFolder(players, AppSettings.InventoryFolder)),
                     (Job: _raids, Path: DataFolder(raid, AppSettings.RaidsFolder)),
                 }
                 .Where(f => f.Path.Length > 0)
@@ -773,10 +783,11 @@ namespace PlayerDBSync
             _players.Folder = DataFolder(playersFolder, AppSettings.PlayersFolder);
             _homes.Folder = DataFolder(playersFolder, AppSettings.HousesFolder);
             _regrades.Folder = DataFolder(playersFolder, AppSettings.RegradesFolder);
+            _inventory.Folder = DataFolder(playersFolder, AppSettings.InventoryFolder);
             _raids.Folder = DataFolder(raidFolder, AppSettings.RaidsFolder);
             if (playersFolder.Length > 0)
             {
-                foreach (var (job, dataFolder) in new[] { (_players, AppSettings.PlayersFolder), (_homes, AppSettings.HousesFolder), (_regrades, AppSettings.RegradesFolder) })
+                foreach (var (job, dataFolder) in new[] { (_players, AppSettings.PlayersFolder), (_homes, AppSettings.HousesFolder), (_regrades, AppSettings.RegradesFolder), (_inventory, AppSettings.InventoryFolder) })
                 {
                     if (!job.Enabled)
                     {
