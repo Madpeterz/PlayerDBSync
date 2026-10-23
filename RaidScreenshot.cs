@@ -343,7 +343,7 @@ namespace PlayerDBSync
         }
 
         /// <summary>Written to a temp file first, so the finished file never appears half-written.</summary>
-        private static void WriteFile(SKData? webp, string path)
+        internal static void WriteFile(SKData? webp, string path)
         {
             using (webp)
             {

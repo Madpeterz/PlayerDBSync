@@ -6,6 +6,9 @@ namespace PlayerDBSync
         private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(30);
         private static readonly TimeSpan ScreenshotCheckInterval = TimeSpan.FromSeconds(2);
 
+        // The addon gives up on a DemoOCR request after 60 s and rewrites its location every second, so check often.
+        private static readonly TimeSpan DemoOcrCheckInterval = TimeSpan.FromSeconds(1);
+
         private readonly AppSettings _settings = AppSettings.Load();
         private readonly SyncJob _players;
         private readonly SyncJob _homes;
@@ -29,6 +32,18 @@ namespace PlayerDBSync
         private Thread? _screenshotThread;
         // Mirrors the checkbox so the screenshot thread can read it.
         private volatile bool _screenshotsOn;
+
+        // Demo OCR screenshots waiting in DemoOcr.OutputFolder, uploaded on demoOcrTimer while the PlayerDB Demos folder is synced.
+        private readonly DemoOcrUploader _demoOcrUploader;
+        private string _demosFolder = "";
+        private string _demoOcrUrl = "";
+        private bool _demoOcrUploading;
+        private string? _lastDemoOcrError;
+
+        // Demo OCR screenshots are taken on their own thread, started with the sync and ended by its cancellation.
+        private Thread? _demoOcrThread;
+        // Mirrors the checkbox so the Demo OCR thread can read it.
+        private volatile bool _demoOcrOn;
 
         // Bumped on each version lookup, so a slow earlier one can't overwrite a newer result.
         private int _versionLookup;
@@ -80,6 +95,7 @@ namespace PlayerDBSync
             _inventory = new SyncJob("Inventory", "/api/inventory", inventoryTimer, new DatUploader(m => Log($"Inventory: {m}")), _settings.InventorySyncedFiles);
             _raids = new SyncJob("Raids", "/api/raids", raidsTimer, new DatUploader(m => Log($"Raids: {m}")), _settings.RaidSyncedFiles);
             _imageUploader = new RaidImageUploader(m => Log($"Screenshots: {m}"));
+            _demoOcrUploader = new DemoOcrUploader(m => Log($"Demo OCR: {m}"));
         }
 
         private void Form1_Load(object? sender, EventArgs e)
@@ -90,6 +106,7 @@ namespace PlayerDBSync
             txtUserId.Text = _settings.UserId;
             txtApiKey.Text = _settings.GetApiKey();
             chkRaidScreenshots.Checked = _settings.RaidScreenshots;
+            chkDemoOcr.Checked = _settings.DemoOcrScreenshots;
         }
 
         private void Form1_Shown(object? sender, EventArgs e)
@@ -208,6 +225,28 @@ namespace PlayerDBSync
             _lastIgnoreError = null;
             _imageUploader.ResetCache();
             _lastImagesError = null;
+            _demoOcrUploader.ResetCache();
+            _lastDemoOcrError = null;
+            if (_demosFolder.Length > 0)
+            {
+                Log($"Demo OCR: uploading new screenshots from {DemoOcr.OutputFolder} every {TimeSpan.FromMilliseconds(demoOcrTimer.Interval).TotalSeconds:0} s");
+
+                // Runs all the time; it does nothing while the box is unticked.
+                // A thread from the previous run may still be finishing a screenshot.
+                _demoOcrThread?.Join(TimeSpan.FromSeconds(10));
+                var demosFolder = _demosFolder;
+                var demoToken = _cts.Token;
+                _demoOcrThread = new Thread(() => WatchDemoOcrRequests(demosFolder, demoToken))
+                {
+                    IsBackground = true,
+                    Name = "Demo OCR screenshots",
+                };
+                _demoOcrThread.Start();
+            }
+            else if (chkDemoOcr.Checked)
+            {
+                Log("Demo OCR: needs the PlayerDB addon's Demos folder; update the addon, run the game with it enabled, then stop and start again");
+            }
             if (_raids.Enabled)
             {
                 Log($"Raids: downloading the item ignore list every {TimeSpan.FromMilliseconds(ignoreTimer.Interval).TotalMinutes:0.#} min");
@@ -226,9 +265,13 @@ namespace PlayerDBSync
                 _screenshotThread.Start();
             }
 
-            await Task.WhenAll(Jobs.Select(RunSyncAsync).Append(RefreshIgnoreListAsync()).Append(StartImageUploadsAsync()));
+            await Task.WhenAll(Jobs.Select(RunSyncAsync).Append(RefreshIgnoreListAsync()).Append(StartImageUploadsAsync()).Append(UploadDemoOcrAsync()));
             if (_cts != null)
             {
+                if (_demosFolder.Length > 0)
+                {
+                    demoOcrTimer.Start();
+                }
                 foreach (var job in Jobs.Where(j => j.Enabled))
                 {
                     job.Timer.Start();
@@ -412,6 +455,71 @@ namespace PlayerDBSync
             {
                 Log(error);
                 _lastImagesError = error;
+            }
+        }
+
+        private async void demoOcrTimer_Tick(object? sender, EventArgs e)
+        {
+            await UploadDemoOcrAsync();
+        }
+
+        /// <summary>Uploads the next few Demo OCR screenshots waiting to be sent.</summary>
+        private async Task UploadDemoOcrAsync()
+        {
+            if (_demoOcrUploading || _cts == null || _demosFolder.Length == 0)
+            {
+                return;
+            }
+
+            _demoOcrUploading = true;
+            var ct = _cts.Token;
+            string? error;
+            try
+            {
+                (_, error) = await _demoOcrUploader.UploadNextAsync(_demoOcrUrl, _userId, _apiKey, ct);
+                if (error == null)
+                {
+                    if (_lastDemoOcrError != null)
+                    {
+                        Log("Demo OCR: uploading working again");
+                    }
+                    _lastDemoOcrError = null;
+                    return;
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+            }
+            finally
+            {
+                _demoOcrUploading = false;
+            }
+
+            // Only log when the error changes; the next tick retries.
+            error = $"Demo OCR: couldn't upload: {error} – retrying in {TimeSpan.FromMilliseconds(demoOcrTimer.Interval).TotalSeconds:0} s";
+            if (error != _lastDemoOcrError)
+            {
+                Log(error);
+                _lastDemoOcrError = error;
+            }
+        }
+
+        private void chkDemoOcr_CheckedChanged(object? sender, EventArgs e)
+        {
+            _demoOcrOn = chkDemoOcr.Checked;
+            if (_settings.DemoOcrScreenshots == chkDemoOcr.Checked)
+            {
+                return;
+            }
+            SaveSettings();
+            if (chkDemoOcr.Checked && _cts != null && _demosFolder.Length == 0)
+            {
+                Log("Demo OCR: needs the PlayerDB addon's Demos folder; update the addon, run the game with it enabled, then stop and start again");
             }
         }
 
@@ -607,12 +715,124 @@ namespace PlayerDBSync
             }
         }
 
-        /// <summary>Waits until the next check; false once the sync has stopped.</summary>
-        private static bool WaitForNextCheck(CancellationToken ct)
+        /// <summary>
+        ///  The Demo OCR thread: checks the PlayerDB addon's Demos\request.dat every <see cref="DemoOcrCheckInterval"/>.
+        ///  While it says <c>status = true</c> and location.dat is up to date, it captures the game, saves the picture
+        ///  named after that location and answers by setting the request to <c>status = false</c>; the upload follows.
+        /// </summary>
+        private void WatchDemoOcrRequests(string demosFolder, CancellationToken ct)
+        {
+            // The current request already has its screenshot saved but couldn't be answered yet.
+            bool requestAnswered = false;
+            string? lastError = null;
+
+            while (WaitForNextCheck(ct, DemoOcrCheckInterval))
+            {
+                if (!_demoOcrOn)
+                {
+                    continue;
+                }
+                var requested = DemoOcr.IsRequested(demosFolder);
+                if (requested == null)
+                {
+                    // Most likely the game is writing it; read again next check.
+                    continue;
+                }
+                if (requested == false)
+                {
+                    requestAnswered = false;
+                    lastError = null;
+                    continue;
+                }
+                if (requestAnswered)
+                {
+                    // Don't take a second screenshot for the same request; just finish answering it.
+                    requestAnswered = !DemoOcr.TryMarkDone(demosFolder);
+                    continue;
+                }
+
+                string error;
+                try
+                {
+                    var location = DemoOcr.ReadLocation(demosFolder, out var upToDate);
+                    if (location == null || !upToDate)
+                    {
+                        error = "Demo OCR requested but location.dat isn't up to date yet – waiting";
+                    }
+                    else
+                    {
+                        var (image, captureError) = RaidScreenshot.CaptureGame();
+                        if (image != null)
+                        {
+                            using (image)
+                            {
+                                // The location must still be the one the picture was taken at.
+                                var after = DemoOcr.ReadLocation(demosFolder, out var stillUpToDate);
+                                if (image.Width != DemoOcr.Width || image.Height != DemoOcr.Height)
+                                {
+                                    error = $"Demo OCR requested but the game window is {image.Width}x{image.Height}, it needs to be {DemoOcr.Width}x{DemoOcr.Height} – retrying";
+                                }
+                                else if (after != location || !stillUpToDate)
+                                {
+                                    error = "Demo OCR requested but the location changed while taking the screenshot – retrying";
+                                }
+                                else
+                                {
+                                    var path = DemoOcr.PathFor(DateTime.UtcNow, location.Value);
+                                    DemoOcr.SaveWebp(image, path);
+                                    LogFromThread($"Demo OCR: screenshot saved at {location.Value.Sextant}: {path}");
+                                    lastError = null;
+                                    requestAnswered = !DemoOcr.TryMarkDone(demosFolder);
+                                    BeginUploadDemoOcr();
+                                    continue;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            error = $"Demo OCR requested but {captureError} – retrying";
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    error = $"Demo OCR error: {ex.Message} – retrying";
+                }
+
+                // The request is kept, so this retries every check; only log when the reason changes.
+                if (error != lastError)
+                {
+                    LogFromThread(error);
+                    lastError = error;
+                }
+            }
+        }
+
+        /// <summary>
+        ///  Starts an upload from a background thread once the new screenshot has settled
+        ///  (<see cref="DemoOcrUploader.SettleTime"/>), so it isn't left waiting for the next tick.
+        /// </summary>
+        private void BeginUploadDemoOcr()
         {
             try
             {
-                return !ct.WaitHandle.WaitOne(ScreenshotCheckInterval);
+                BeginInvoke(async () =>
+                {
+                    await Task.Delay(DemoOcrUploader.SettleTime + TimeSpan.FromMilliseconds(250));
+                    await UploadDemoOcrAsync();
+                });
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+
+        /// <summary>Waits until the next check; false once the sync has stopped.</summary>
+        private static bool WaitForNextCheck(CancellationToken ct, TimeSpan? interval = null)
+        {
+            try
+            {
+                return !ct.WaitHandle.WaitOne(interval ?? ScreenshotCheckInterval);
             }
             catch (ObjectDisposedException)
             {
@@ -730,6 +950,7 @@ namespace PlayerDBSync
             }
             ignoreTimer.Stop();
             imagesTimer.Stop();
+            demoOcrTimer.Stop();
             _cts?.Cancel();
             _cts?.Dispose();
             _cts = null;
@@ -785,6 +1006,7 @@ namespace PlayerDBSync
             _regrades.Folder = DataFolder(playersFolder, AppSettings.RegradesFolder);
             _inventory.Folder = DataFolder(playersFolder, AppSettings.InventoryFolder);
             _raids.Folder = DataFolder(raidFolder, AppSettings.RaidsFolder);
+            _demosFolder = DataFolder(playersFolder, AppSettings.DemosFolder);
             if (playersFolder.Length > 0)
             {
                 foreach (var (job, dataFolder) in new[] { (_players, AppSettings.PlayersFolder), (_homes, AppSettings.HousesFolder), (_regrades, AppSettings.RegradesFolder), (_inventory, AppSettings.InventoryFolder) })
@@ -801,6 +1023,7 @@ namespace PlayerDBSync
             }
             _raidIgnoreUrl = url + RaidIgnoreList.EndpointPath;
             _raidImagesUrl = url + RaidImageUploader.EndpointPath;
+            _demoOcrUrl = url + DemoOcrUploader.EndpointPath;
             _userId = userId;
             _apiKey = txtApiKey.Text;
             return true;
@@ -844,6 +1067,7 @@ namespace PlayerDBSync
             _settings.UserId = txtUserId.Text.Trim();
             _settings.SetApiKey(txtApiKey.Text);
             _settings.RaidScreenshots = chkRaidScreenshots.Checked;
+            _settings.DemoOcrScreenshots = chkDemoOcr.Checked;
             try
             {
                 _settings.Save();
@@ -871,6 +1095,7 @@ namespace PlayerDBSync
             }
             ignoreTimer.Stop();
             imagesTimer.Stop();
+            demoOcrTimer.Stop();
             _cts?.Cancel();
             SaveSettings();
         }

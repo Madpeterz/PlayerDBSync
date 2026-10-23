@@ -20,6 +20,7 @@ namespace PlayerDBSync
         public const string RegradesFolder = "Regrades";
         public const string InventoryFolder = "Inventory";
         public const string RaidsFolder = "Raids";
+        public const string DemosFolder = "Demos";
         public const string DefaultUrl = "https://playerdb.blackatom.win";
 
         // Earlier builds stored the full players endpoint (or a wrong "/api/player" default); trimmed back to the base URL.
@@ -41,6 +42,9 @@ namespace PlayerDBSync
 
         /// <summary>Capture the game window when the RaidsDB addon writes Raids\request.sht.</summary>
         public bool RaidScreenshots { get; set; }
+
+        /// <summary>Capture the game window when the PlayerDB addon sets Demos\request.dat, and upload it for Demo OCR.</summary>
+        public bool DemoOcrScreenshots { get; set; }
 
         /// <summary>
         ///  What was last uploaded for each file, keyed by file name.

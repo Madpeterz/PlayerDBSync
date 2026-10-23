@@ -11,6 +11,7 @@ It watches the addons' data folders, and every 5 minutes uploads any files that 
 | PlayerDB  | `PlayerDB\Regrades`   | `<server>/api/regrades` |
 | PlayerDB  | `PlayerDB\Inventory`  | `<server>/api/inventory` |
 | RaidsDB   | `RaidsDB\Raids`       | `<server>/api/raids`    |
+| PlayerDB  | `PlayerDB\Demos`      | `<server>/api/demoocr` (screenshots, see [Demo OCR screenshots](#demo-ocr-screenshots)) |
 
 You can sync either addon; leave the other empty. Houses and regrades used to come from the separate HomeDB and RegradeDB addons; both are now defunct, merged into PlayerDB (see [Upgrading from HomeDB and RegradeDB](#upgrading-from-homedb-and-regradedb)).
 
@@ -117,6 +118,28 @@ While RaidsDB is synced, the app uploads the screenshots in that folder every 30
 - If the upload fails, it's tried again on the next 30-second tick.
 - If another recorder already uploaded a screenshot with the same number for that raid, the server gives yours the next free number and keeps its reason.
 
+## Demo OCR screenshots
+
+Tick **Upload screenshot on PlayerDB DemoOCR request** to let the PlayerDB addon's DemoOCR icon (the burning house) send the server a screenshot of a demolition notice to read. It needs the addon's `Demos` folder, so the **PlayerDB addon** folder must be set. The addon and the app hand over through two files in `PlayerDB\Demos`:
+
+| File | Written by | Meaning |
+|------|------------|---------|
+| `request.dat` | addon, then app | `{ status = true }` is a request for a screenshot. The app sets it back to `{ status = false }` once the screenshot is saved; the addon then shows the icon as done and stops writing the location. If it is still `true` after 60 seconds the addon gives up and tells you to enable the sync app. |
+| `location.dat` | addon | The player's sextant location, rewritten every second while a request is open. |
+
+While syncing, the app checks `request.dat` every second. On `status = true` it waits until `location.dat` is up to date (written after the request and in the last 3 seconds), captures the `archeage.exe` window, and checks that the location hasn't changed since. If anything isn't right yet (the game is minimised, the location is stale) it logs why once and tries again every second until the addon gives up.
+
+The game window must be exactly **2560x1440**; the server only takes that size, so the app never scales it. Otherwise it logs the size it found and waits.
+
+### Uploading
+
+Screenshots are saved as WebP (lossless, or lossy if that would be over the server's 10 MB limit) in `%TEMP%\PlayerDBSync\Screenshots\DemoOCR`, named after when and where they were taken: `2026-10-23_13-08-00_16-10-20S_9-41-2W.webp`. The app uploads them 2 seconds after they are saved (a file isn't always readable straight away) and then every 30 seconds, oldest first, up to 3 at a time, with the location sent as `16° 10' 20" S, 9° 41' 2" W`. A screenshot is deleted once the server has dealt with it, so anything left in that folder is still waiting.
+
+- **Queued**: the server answers with the request's id and place in the queue, which the log shows.
+- **Already known** (409): the same picture, or a demo or request within 4 m of that spot, is already on the server, so the screenshot is deleted.
+- **Rejected** (422): the server found the picture or location wrong. The file is kept and skipped until it changes or the app is restarted.
+- **Ten already waiting** (429) or any other failure: the file is kept and tried again on the next 30-second tick.
+
 ## Upgrading from HomeDB and RegradeDB
 
 HomeDB and RegradeDB are defunct; their houses and regrades are now collected by PlayerDB, in its `Houses` and `Regrades` folders. This version of the app reads them from the **PlayerDB addon** folder and no longer has separate HomeDB and RegradeDB fields; folders saved for them by older versions are ignored.
@@ -136,6 +159,9 @@ Settings are saved in `%AppData%\PlayerDBSync\settings.json`. The API key is enc
 | *Failing (3x) – next try …* | The server is down or unreachable. The app keeps retrying on its own; check the Server URL if it never recovers. |
 | *Homes: skipped, the PlayerDB addon has no Houses folder yet* (or Players/Regrades/Inventory) | The addon hasn't saved any of those yet. Play with the addon enabled until it creates the folder, then click **Stop** and **Start**. |
 | No version shown under a folder | The folder isn't an addon folder, or the addon hasn't written a data file with `addon_version` yet. Syncing still works. |
+| *Demo OCR requested but the game window is …, it needs to be 2560x1440* | Set the game to a 2560x1440 window or full screen resolution and click the DemoOCR icon again. |
+| *Demo OCR requested but location.dat isn't up to date yet* | The addon isn't writing its location. Check that the DemoOCR feature is enabled in the PlayerDB addon and the game isn't paused or loading. |
+| *Demo OCR: needs the PlayerDB addon's Demos folder* | Update the PlayerDB addon, then play with it enabled until it creates `Demos`, and click **Stop** and **Start**. |
 | *Server rejected … not named \<raid start\>-\<n\>[-\<reason\>].webp* | A file in the screenshot folder wasn't saved by the app. Remove it from `%TEMP%\PlayerDBSync\Screenshots`. |
 
 ## Building from source
