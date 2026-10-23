@@ -160,6 +160,7 @@ Settings are saved in `%AppData%\PlayerDBSync\settings.json`. The API key is enc
 | *Homes: skipped, the PlayerDB addon has no Houses folder yet* (or Players/Regrades/Inventory) | The addon hasn't saved any of those yet. Play with the addon enabled until it creates the folder, then click **Stop** and **Start**. |
 | No version shown under a folder | The folder isn't an addon folder, or the addon hasn't written a data file with `addon_version` yet. Syncing still works. |
 | *Demo OCR requested but the game window is …, it needs to be 2560x1440* | Set the game to a 2560x1440 window or full screen resolution and click the DemoOCR icon again. |
+| *… the capture came out black (is the game in exclusive full screen? …)* | The app captures the game window without taking over the screen, which shows black while the game is in exclusive full screen. Set the game to windowed or borderless full screen; the request is retried on its own. |
 | *Demo OCR requested but location.dat isn't up to date yet* | The addon isn't writing its location. Check that the DemoOCR feature is enabled in the PlayerDB addon and the game isn't paused or loading. |
 | *Demo OCR: needs the PlayerDB addon's Demos folder* | Update the PlayerDB addon, then play with it enabled until it creates `Demos`, and click **Stop** and **Start**. |
 | *Server rejected … not named \<raid start\>-\<n\>[-\<reason\>].webp* | A file in the screenshot folder wasn't saved by the app. Remove it from `%TEMP%\PlayerDBSync\Screenshots`. |

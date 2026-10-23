@@ -235,6 +235,13 @@ namespace PlayerDBSync
                         }
                     }
                 }
+                // Neither capture takes the screen in exclusive mode, so a game in exclusive full screen
+                // comes out black; don't save that.
+                if (IsBlack(image))
+                {
+                    image.Dispose();
+                    return (null, "the capture came out black (is the game in exclusive full screen? Use windowed or borderless)");
+                }
                 return (image, null);
             }
             finally
@@ -247,6 +254,36 @@ namespace PlayerDBSync
                 {
                     p.Dispose();
                 }
+            }
+        }
+
+        // Every 8th pixel of every 8th row is checked: enough to find any picture, without reading all of it.
+        private const int BlackCheckStep = 8;
+
+        /// <summary>True if every sampled pixel of <paramref name="image"/> is black.</summary>
+        private static bool IsBlack(Bitmap image)
+        {
+            var bits = image.LockBits(new Rectangle(Point.Empty, image.Size), ImageLockMode.ReadOnly, PixelFormat.Format32bppRgb);
+            try
+            {
+                var row = new int[image.Width];
+                for (int y = 0; y < image.Height; y += BlackCheckStep)
+                {
+                    Marshal.Copy(bits.Scan0 + y * bits.Stride, row, 0, row.Length);
+                    for (int x = 0; x < row.Length; x += BlackCheckStep)
+                    {
+                        // The alpha byte is undefined; only the colour counts.
+                        if ((row[x] & 0xFFFFFF) != 0)
+                        {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+            finally
+            {
+                image.UnlockBits(bits);
             }
         }
 

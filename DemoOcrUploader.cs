@@ -90,10 +90,10 @@ namespace PlayerDBSync
                 return null;
             }
 
-            string blob;
+            byte[] bytes;
             try
             {
-                blob = Convert.ToBase64String(await File.ReadAllBytesAsync(file.FullName, ct));
+                bytes = await File.ReadAllBytesAsync(file.FullName, ct);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -101,6 +101,7 @@ namespace PlayerDBSync
                 return null;
             }
 
+            var blob = Convert.ToBase64String(bytes);
             var sextant = location.Value.Sextant;
             var unixtime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var secret = Convert.ToHexStringLower(SHA256.HashData(
@@ -116,9 +117,10 @@ namespace PlayerDBSync
                     var queued = await response.Content.ReadFromJsonAsync<Response>(ct);
                     Delete(file);
                     _rejected.Remove(file.Name);
+                    // Not file.Length: FileInfo.Delete drops its cached size, so that would look for the deleted file.
                     _log(queued == null
-                        ? $"Uploaded {sextant} ({file.Length:N0} bytes)"
-                        : $"Uploaded {sextant} ({file.Length:N0} bytes), request {queued.Id}, place {queued.Position} in the queue");
+                        ? $"Uploaded {sextant} ({bytes.Length:N0} bytes)"
+                        : $"Uploaded {sextant} ({bytes.Length:N0} bytes), request {queued.Id}, place {queued.Position} in the queue");
                     return null;
                 }
 
