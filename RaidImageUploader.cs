@@ -1,6 +1,4 @@
 using System.Net.Http.Json;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json.Serialization;
 
 namespace PlayerDBSync
@@ -15,15 +13,14 @@ namespace PlayerDBSync
         public const string EndpointPath = "/api/raids/images";
         public const int MaxPerUpload = 3;
 
-        private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(100) };
-
         private readonly Action<string> _log;
 
-        // Images the server turned away, with the file stamp they were read at; not retried until the file changes.
-        // Deliberately not persisted, so a restart retries them.
-        private readonly Dictionary<string, (long Size, DateTime LastWriteUtc)> _rejected = new(StringComparer.OrdinalIgnoreCase);
+        private readonly RejectedFiles _rejected = new();
 
-        private sealed record PendingImage(string Path, string Name, byte[] Bytes, long Size, DateTime LastWriteUtc);
+        private sealed record PendingImage(FileInfo File, byte[] Bytes)
+        {
+            public string Name => File.Name;
+        }
 
         private sealed class Response
         {
@@ -93,7 +90,7 @@ namespace PlayerDBSync
             }
             if (resized > 0)
             {
-                _log($"Resized {resized} waiting screenshot{(resized == 1 ? "" : "s")} to fit {RaidScreenshot.MaxWidth}x{RaidScreenshot.MaxHeight}");
+                _log($"Resized {Words.Count(resized, "waiting screenshot")} to fit {RaidScreenshot.MaxWidth}x{RaidScreenshot.MaxHeight}");
             }
         }
 
@@ -101,7 +98,7 @@ namespace PlayerDBSync
         ///  Uploads the oldest (up to <see cref="MaxPerUpload"/>) images waiting, as one request.
         /// </summary>
         /// <returns>Images the server now has, and why the upload failed, if it did.</returns>
-        public async Task<(int Uploaded, string? Error)> UploadNextAsync(string url, long userId, string apiKey, CancellationToken ct)
+        public async Task<(int Uploaded, string? Error)> UploadNextAsync(string url, ApiCredentials credentials, CancellationToken ct)
         {
             var images = await Task.Run(NextImages, ct);
             if (images.Count == 0)
@@ -111,46 +108,25 @@ namespace PlayerDBSync
 
             var names = images.Select(i => i.Name).ToArray();
             var blobs = images.Select(i => Convert.ToBase64String(i.Bytes)).ToArray();
-            var unixtime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
-            // The secret covers names and blobdat exactly as sent, each joined with ",".
-            var secret = Convert.ToHexStringLower(SHA256.HashData(
-                Encoding.UTF8.GetBytes($"{userId}{string.Join(',', names)}{string.Join(',', blobs)}{apiKey}{unixtime}")));
-            var payload = new { names, blobdat = blobs, userid = userId, unixtime, secret };
 
             Response? result;
             try
             {
-                using var response = await Http.PostAsJsonAsync(url, payload, ct);
+                using var response = await ApiClient.PostAsync(url, credentials, [("names", names), ("blobdat", blobs)], ct);
 
                 // 422 is every image turned away, with the same reply listing why.
                 if (!response.IsSuccessStatusCode && (int)response.StatusCode != 422)
                 {
-                    // Collapse whitespace so pretty-printed JSON errors fit on one log line.
-                    var body = string.Join(' ', (await response.Content.ReadAsStringAsync(ct))
-                        .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-                    if (body.Length > 300)
-                    {
-                        body = body[..300] + "…";
-                    }
-                    var detail = $"{(int)response.StatusCode} {response.ReasonPhrase} {body}".TrimEnd();
+                    var detail = await ApiClient.DescribeAsync(response, ct);
                     return (0, (int)response.StatusCode == 418
                         ? $"Server refused the upload ({detail}); check the user ID, API key and PC clock"
                         : detail);
                 }
                 result = await response.Content.ReadFromJsonAsync<Response>(ct);
             }
-            catch (HttpRequestException ex)
+            catch (Exception ex) when (ApiClient.FailureOf(ex, ct) is string failure)
             {
-                return (0, ex.Message);
-            }
-            catch (System.Text.Json.JsonException)
-            {
-                return (0, "the server's reply wasn't valid JSON");
-            }
-            catch (TaskCanceledException) when (!ct.IsCancellationRequested)
-            {
-                return (0, "Request timed out");
+                return (0, failure);
             }
             if (result == null)
             {
@@ -166,27 +142,21 @@ namespace PlayerDBSync
             {
                 if (reasons.TryGetValue(image.Name, out var reason))
                 {
-                    _rejected[image.Name] = (image.Size, image.LastWriteUtc);
+                    _rejected.Add(image.File);
                     _log($"Server rejected {image.Name}: {reason} (will retry when the file changes)");
                     continue;
                 }
                 uploaded++;
                 _rejected.Remove(image.Name);
-                try
-                {
-                    File.Delete(image.Path);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // Left where it is, it's sent again next time and the server counts it as known.
-                }
+                // If it can't be deleted, it's sent again next time and the server counts it as known.
+                FileHelper.TryDelete(image.File.FullName);
             }
             if (uploaded > 0)
             {
                 var size = images.Where(i => !reasons.ContainsKey(i.Name)).Sum(i => (long)i.Bytes.Length);
                 _log(result.Known == 0
-                    ? $"Uploaded {uploaded} image{(uploaded == 1 ? "" : "s")} ({size:N0} bytes)"
-                    : $"Uploaded {uploaded} image{(uploaded == 1 ? "" : "s")} ({size:N0} bytes, {result.Known} the server already had)");
+                    ? $"Uploaded {Words.Count(uploaded, "image")} ({size:N0} bytes)"
+                    : $"Uploaded {Words.Count(uploaded, "image")} ({size:N0} bytes, {result.Known} the server already had)");
             }
             return (uploaded, null);
         }
@@ -206,13 +176,13 @@ namespace PlayerDBSync
                 .ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase);
             foreach (var file in files)
             {
-                if (_rejected.TryGetValue(file.Name, out var rej) && rej.Size == file.Length && rej.LastWriteUtc == file.LastWriteTimeUtc)
+                if (_rejected.Contains(file))
                 {
                     continue;
                 }
                 try
                 {
-                    images.Add(new PendingImage(file.FullName, file.Name, File.ReadAllBytes(file.FullName), file.Length, file.LastWriteTimeUtc));
+                    images.Add(new PendingImage(file, File.ReadAllBytes(file.FullName)));
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {

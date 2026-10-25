@@ -154,9 +154,7 @@ namespace PlayerDBSync
         public void Save()
         {
             Directory.CreateDirectory(SettingsDir);
-            var tmp = SettingsPath + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
-            File.Move(tmp, SettingsPath, overwrite: true);
+            FileHelper.WriteAtomic(SettingsPath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
         }
     }
 

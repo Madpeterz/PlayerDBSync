@@ -262,42 +262,34 @@ namespace PlayerDBSync
             // syncTimer
             // 
             syncTimer.Interval = 300000;
-            syncTimer.Tick += syncTimer_Tick;
             // 
             // homesTimer
             // 
             homesTimer.Interval = 300000;
-            homesTimer.Tick += homesTimer_Tick;
             // 
             // regradesTimer
             // 
             regradesTimer.Interval = 300000;
-            regradesTimer.Tick += regradesTimer_Tick;
             // 
             // inventoryTimer
             // 
             inventoryTimer.Interval = 300000;
-            inventoryTimer.Tick += inventoryTimer_Tick;
             // 
             // raidsTimer
             // 
             raidsTimer.Interval = 300000;
-            raidsTimer.Tick += raidsTimer_Tick;
             // 
             // ignoreTimer
             // 
             ignoreTimer.Interval = 900000;
-            ignoreTimer.Tick += ignoreTimer_Tick;
             // 
             // imagesTimer
             // 
             imagesTimer.Interval = 30000;
-            imagesTimer.Tick += imagesTimer_Tick;
             // 
             // demoOcrTimer
             // 
             demoOcrTimer.Interval = 30000;
-            demoOcrTimer.Tick += demoOcrTimer_Tick;
             // 
             // Form1
             // 

@@ -49,18 +49,9 @@ namespace PlayerDBSync
 
         private static string? FromFile(string path)
         {
-            try
-            {
-                // The game may still have the file open; share access so we don't block it.
-                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                using var reader = new StreamReader(fs);
-                var match = Pattern.Match(reader.ReadToEnd());
-                return match.Success ? match.Groups[1].Value : null;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return null;
-            }
+            var text = FileHelper.ReadShared(path);
+            var match = text == null ? null : Pattern.Match(text);
+            return match is { Success: true } ? match.Groups[1].Value : null;
         }
     }
 }

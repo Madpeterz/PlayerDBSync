@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Net.Http.Json;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -22,8 +21,6 @@ namespace PlayerDBSync
         public const string FileName = "ignore.dat";
         public const string EndpointPath = "/api/raids/ignored";
 
-        private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(100) };
-
         private sealed class Response
         {
             [JsonPropertyName("items")]
@@ -31,26 +28,15 @@ namespace PlayerDBSync
         }
 
         /// <summary>Fetches the item names, or the reason it couldn't.</summary>
-        public static async Task<(IReadOnlyList<string>? Items, string? Error)> DownloadAsync(string url, long userId, string apiKey,
+        public static async Task<(IReadOnlyList<string>? Items, string? Error)> DownloadAsync(string url, ApiCredentials credentials,
             CancellationToken ct)
         {
-            var unixtime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var secret = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{userId}{apiKey}{unixtime}")));
-            var payload = new { userid = userId, unixtime, secret };
-
             try
             {
-                using var response = await Http.PostAsJsonAsync(url, payload, ct);
+                using var response = await ApiClient.PostAsync(url, credentials, [], ct);
                 if (!response.IsSuccessStatusCode)
                 {
-                    // Collapse whitespace so pretty-printed JSON errors fit on one log line.
-                    var body = string.Join(' ', (await response.Content.ReadAsStringAsync(ct))
-                        .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-                    if (body.Length > 300)
-                    {
-                        body = body[..300] + "…";
-                    }
-                    return (null, $"{(int)response.StatusCode} {response.ReasonPhrase} {body}".TrimEnd());
+                    return (null, await ApiClient.DescribeAsync(response, ct));
                 }
 
                 var list = await response.Content.ReadFromJsonAsync<Response>(ct);
@@ -60,17 +46,9 @@ namespace PlayerDBSync
                 }
                 return (list.Items.OfType<string>().ToList(), null);
             }
-            catch (HttpRequestException ex)
+            catch (Exception ex) when (ApiClient.FailureOf(ex, ct) is string failure)
             {
-                return (null, ex.Message);
-            }
-            catch (System.Text.Json.JsonException)
-            {
-                return (null, "the server's reply wasn't valid JSON");
-            }
-            catch (TaskCanceledException) when (!ct.IsCancellationRequested)
-            {
-                return (null, "Request timed out");
+                return (null, failure);
             }
         }
 
@@ -86,11 +64,7 @@ namespace PlayerDBSync
             {
                 return false;
             }
-
-            // Write then rename, so the game never reads a half-written file.
-            var tmp = path + ".tmp";
-            File.WriteAllText(tmp, lua);
-            File.Move(tmp, path, overwrite: true);
+            FileHelper.WriteAtomic(path, lua);
             return true;
         }
 
