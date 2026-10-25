@@ -2,7 +2,7 @@
 
 A small Windows app that uploads the data collected by the **PlayerDB** and **RaidsDB** ArcheAge Classic addons to the PlayerDB server.
 
-It watches the addons' data folders, and every 5 minutes uploads any files that have changed:
+It watches the addons' data folders, and every 30 to 45 seconds uploads any files that have changed:
 
 | Addon     | Folder it reads       | Sent to                 |
 |-----------|-----------------------|-------------------------|
@@ -27,7 +27,7 @@ You can sync either addon; leave the other empty. Houses and regrades used to co
 
    The exe isn't code-signed, so Windows SmartScreen may warn the first time you run it. Click **More info → Run anyway**.
 
-2. **Run it** and fill in the form:
+2. **Run it** and fill in the **Config** tab:
 
    | Field              | What to enter |
    |--------------------|---------------|
@@ -46,7 +46,14 @@ You can sync either addon; leave the other empty. Houses and regrades used to co
 
    Under each folder the addon's version is shown in green (e.g. `2.5.0`), read from `addon_version` in its most recently written data file. It's read again whenever the folder changes and after each upload, so it follows addon updates. Nothing is shown if the folder isn't an addon's yet, or if its newest five data files have no version.
 
-3. **Click Start.** The app uploads everything that isn't on the server yet, then checks for changes every 5 minutes. The log shows what it uploads.
+3. **Click Start** (top right). The app uploads everything that isn't on the server yet, then checks for changes every 30 to 45 seconds (a fresh random wait each time, so the folders don't all check at once), and switches to the **Running** tab:
+
+   - **Schedule** has a row for everything it does while syncing (each addon folder, the raid item ignore list, the screenshot uploads). Each row's bar starts full and empties until that's done again; a stretch of it sweeps along while it's being done. Beside it is when it was last checked, or, in red with a red bar, that it's failing and when it next tries.
+   - **Log** shows what it uploads, and any errors.
+
+   The window has no Windows title bar: drag its header to move it, drag its edges to resize it, and use **–** and **×** at the top right to minimise it or exit (which stops syncing). While it runs it also has an icon in the tray (by the clock); minimised, it's only there, off the taskbar, and keeps syncing. Click the icon to bring the window back, or right-click it to show the window, start or stop syncing, or exit. Hovering over it says whether it's syncing.
+
+   The **Info** tab has the app's version, links to the site and to new releases, what is synced where and how often, and the folders the app keeps its settings and screenshots in.
 
 Next time you open the app, it starts syncing straight away with the saved settings. Click **Stop** to change them.
 
@@ -56,12 +63,12 @@ Next time you open the app, it starts syncing straight away with the saved setti
 - Changed files are sent in batches of up to 500.
 - Bookkeeping files (`_count.dat`, `_files.dat`, `empty.keep`) are skipped.
 - Raids are uploaded once the recording is stopped and saved to `Raids`; a raid still being recorded isn't sent.
-- If the server can't be reached or refuses an upload, the app waits longer between attempts (5, 10, 20, then 30 minutes) and logs the error once instead of every time. Each addon retries on its own, so a problem with one doesn't hold up the others.
+- If the server can't be reached or refuses an upload, the app waits longer between attempts (the usual 30 to 45 seconds, doubled for each failure in a row, up to 30 minutes) and logs the error once instead of every time. Each addon retries on its own, so a problem with one doesn't hold up the others.
 - If the server rejects one particular file, that file is skipped until it changes or the app is restarted.
 
 ## Clearing addon data
 
-If the addons were updated to a version the server doesn't take yet, the files they saved are rejected on every sync. **Clear addon data…** (next to **Start**, while stopped) gets rid of them:
+If the addons were updated to a version the server doesn't take yet, the files they saved are rejected on every sync. **Clear addon data…** (at the bottom of the **Config** tab, while stopped) gets rid of them:
 
 - It moves every `*.dat` file in `PlayerDB\Players`, `PlayerDB\Houses`, `PlayerDB\Regrades`, `PlayerDB\Inventory` and `RaidsDB\Raids` to the Recycle Bin, so they can be restored. This includes the addons' `_count.dat` and `_files.dat`. The folders and any other files are left alone.
 - It first asks you to disable the addons (and reload, if you're in the game), as they'd otherwise save their old data straight back, and shows how many files each folder has. Click **Clean** to go ahead or **Nevermind** to leave everything as it is. Once it's done, it reminds you to re-enable the addons.
@@ -95,7 +102,7 @@ Tick **Save screenshot on RaidsDB request** to let the RaidsDB addon ask for scr
 
 When it finds one, it captures the `archeage.exe` window and deletes the request once the screenshot is saved. If the capture fails (for example the game is minimised), the request is kept and retried every 2 seconds. A request that's only partly written (no closing `}` yet) is read again on the next check.
 
-Screenshots are saved to `%TEMP%\PlayerDBSync\Screenshots`. The **Open folder** button next to the checkbox opens it in Explorer.
+Screenshots are saved to `%TEMP%\PlayerDBSync\Screenshots`. The **Open folder** button next to the checkbox (or the folder's link on the **Info** tab) opens it in Explorer.
 
 ### File names
 

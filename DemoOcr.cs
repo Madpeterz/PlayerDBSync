@@ -1,4 +1,3 @@
-using System.Drawing.Imaging;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using SkiaSharp;
@@ -74,7 +73,7 @@ namespace PlayerDBSync
         /// </summary>
         public static bool? IsRequested(string demosFolder)
         {
-            var text = ReadShared(Path.Combine(demosFolder, RequestFile));
+            var text = FileHelper.ReadShared(Path.Combine(demosFolder, RequestFile));
             if (text == null || !text.TrimEnd().EndsWith('}'))
             {
                 return null;
@@ -91,7 +90,7 @@ namespace PlayerDBSync
         {
             upToDate = false;
             var locationPath = Path.Combine(demosFolder, LocationFile);
-            var text = ReadShared(locationPath);
+            var text = FileHelper.ReadShared(locationPath);
             if (text == null || !text.TrimEnd().EndsWith('}'))
             {
                 return null;
@@ -145,12 +144,9 @@ namespace PlayerDBSync
         /// </summary>
         public static bool TryMarkDone(string demosFolder)
         {
-            var path = Path.Combine(demosFolder, RequestFile);
-            var tmp = path + ".tmp";
             try
             {
-                File.WriteAllText(tmp, "{\n    status = false,\n}\n");
-                File.Move(tmp, path, overwrite: true);
+                FileHelper.WriteAtomic(Path.Combine(demosFolder, RequestFile), "{\n    status = false,\n}\n");
                 return true;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -177,28 +173,7 @@ namespace PlayerDBSync
         ///  Saves <paramref name="image"/>, which must be <see cref="Width"/> x <see cref="Height"/>, as a WebP of up to
         ///  <see cref="MaxFileBytes"/>. Never scaled: the server reads text off it.
         /// </summary>
-        public static void SaveWebp(Bitmap image, string path)
-        {
-            var bits = image.LockBits(new Rectangle(Point.Empty, image.Size), ImageLockMode.ReadOnly, PixelFormat.Format32bppRgb);
-            SKData? webp;
-            try
-            {
-                // 32bppRgb is BGRA in memory; GDI leaves the alpha byte undefined, so treat it as opaque.
-                var info = new SKImageInfo(image.Width, image.Height, SKColorType.Bgra8888, SKAlphaType.Opaque);
-                using var pixmap = new SKPixmap(info, bits.Scan0, bits.Stride);
-                webp = Encode(pixmap);
-            }
-            finally
-            {
-                image.UnlockBits(bits);
-            }
-            if (webp != null && webp.Size > MaxFileBytes)
-            {
-                webp.Dispose();
-                throw new InvalidOperationException($"the screenshot is over {MaxFileBytes / 1024 / 1024} MB even as a lossy WebP");
-            }
-            RaidScreenshot.WriteFile(webp, path);
-        }
+        public static void SaveWebp(Bitmap image, string path) => GameCapture.SaveWebp(image, path, Encode);
 
         private static SKData? Encode(SKPixmap pixmap)
         {
@@ -208,22 +183,12 @@ namespace PlayerDBSync
                 webp.Dispose();
                 webp = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossy, quality));
             }
+            if (webp != null && webp.Size > MaxFileBytes)
+            {
+                webp.Dispose();
+                throw new InvalidOperationException($"the screenshot is over {MaxFileBytes / 1024 / 1024} MB even as a lossy WebP");
+            }
             return webp;
-        }
-
-        /// <summary>The game may have the file open; share access so we don't block it.</summary>
-        private static string? ReadShared(string path)
-        {
-            try
-            {
-                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                using var reader = new StreamReader(fs);
-                return reader.ReadToEnd();
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return null;
-            }
         }
     }
 }

@@ -9,6 +9,20 @@ namespace PlayerDBSync
         // The addon gives up on a DemoOCR request after 60 s and rewrites its location every second, so check often.
         private static readonly TimeSpan DemoOcrCheckInterval = TimeSpan.FromSeconds(1);
 
+        // How often each addon folder is synced (each wait a random pick in this range, so the folders don't all check
+        // at once), the raid item ignore list downloaded and waiting screenshots uploaded. A sync with nothing changed
+        // only reads the files' sizes and dates; it sends nothing.
+        private static readonly TimeSpan SyncIntervalMin = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan SyncIntervalMax = TimeSpan.FromSeconds(45);
+        private static readonly TimeSpan IgnoreListInterval = TimeSpan.FromMinutes(15);
+        private static readonly TimeSpan UploadInterval = TimeSpan.FromSeconds(30);
+
+        // Steps in a schedule row's bar; enough that a 30 min backoff still moves every few seconds.
+        private const int BarSteps = 1000;
+
+        private const string DemoOcrNeedsDemosFolder =
+            "Demo OCR: needs the PlayerDB addon's Demos folder; update the addon, run the game with it enabled, then stop and start again";
+
         private readonly AppSettings _settings = AppSettings.Load();
         private readonly SyncJob _players;
         private readonly SyncJob _homes;
@@ -17,28 +31,21 @@ namespace PlayerDBSync
         private readonly SyncJob _raids;
         private CancellationTokenSource? _cts;
 
-        // The raid item ignore list, downloaded when sync starts and on ignoreTimer while RaidsDB is synced.
-        private string _raidIgnoreUrl = "";
-        private bool _ignoreRefreshing;
-        private string? _lastIgnoreError;
-
-        // Raid screenshots waiting in RaidScreenshot.OutputFolder, uploaded on imagesTimer while RaidsDB is synced.
+        // While RaidsDB is synced: the raid item ignore list, downloaded every IgnoreListInterval, and the raid
+        // screenshots waiting in RaidScreenshot.OutputFolder, uploaded every UploadInterval.
+        private readonly PeriodicTask _ignoreList;
+        private readonly PeriodicTask _imageUploads;
         private readonly RaidImageUploader _imageUploader;
-        private string _raidImagesUrl = "";
-        private bool _imagesUploading;
-        private string? _lastImagesError;
 
         // Raid screenshots are taken on their own thread, started with the sync and ended by its cancellation.
         private Thread? _screenshotThread;
         // Mirrors the checkbox so the screenshot thread can read it.
         private volatile bool _screenshotsOn;
 
-        // Demo OCR screenshots waiting in DemoOcr.OutputFolder, uploaded on demoOcrTimer while the PlayerDB Demos folder is synced.
+        // Demo OCR screenshots waiting in DemoOcr.OutputFolder, uploaded every UploadInterval while the PlayerDB Demos folder is synced.
+        private readonly PeriodicTask _demoOcrUploads;
         private readonly DemoOcrUploader _demoOcrUploader;
         private string _demosFolder = "";
-        private string _demoOcrUrl = "";
-        private bool _demoOcrUploading;
-        private string? _lastDemoOcrError;
 
         // Demo OCR screenshots are taken on their own thread, started with the sync and ended by its cancellation.
         private Thread? _demoOcrThread;
@@ -48,54 +55,171 @@ namespace PlayerDBSync
         // Bumped on each version lookup, so a slow earlier one can't overwrite a newer result.
         private int _versionLookup;
 
-        // Snapshot of the credentials taken when sync starts, so edits to the boxes don't affect a running sync.
-        private long _userId;
-        private string _apiKey = "";
+        // Snapshot of the server and credentials taken when sync starts, so edits to the boxes don't affect a running sync.
+        private string _baseUrl = "";
+        private ApiCredentials _credentials;
 
         /// <summary>
-        ///  One folder pushed to one API endpoint on its own timer, with its own backoff,
+        ///  Something done every <see cref="Interval"/> (or, given a <see cref="MaxInterval"/>, a random wait between the
+        ///  two each time) while syncing, shown as a row (<see cref="Label"/>, a bar and a status) whose bar empties until
+        ///  it is done again; scheduleTimer does it once the bar is empty. The wait can be longer still (a backoff); the
+        ///  bar then covers the longer wait.
+        /// </summary>
+        private abstract class TimedEvent(string label, TimeSpan interval, TimeSpan? maxInterval = null)
+        {
+            public string Label { get; } = label;
+            public TimeSpan Interval { get; } = interval;
+            public TimeSpan MaxInterval { get; } = maxInterval ?? interval;
+
+            /// <summary>The wait before it's next done.</summary>
+            public TimeSpan NextWait() => Interval + (MaxInterval - Interval) * Random.Shared.NextDouble();
+
+            /// <summary>"30–45 s", or "15 min" for a fixed interval, for the log and the Info page.</summary>
+            public string Every => Form1.Every(Interval, MaxInterval);
+
+            public abstract bool Enabled { get; }
+            public bool Running { get; set; }
+
+            // Its last run failed; its bar and status turn red.
+            public bool Failing { get; set; }
+
+            // The wait before it is next done: from when it was last done (or sync started) until it's due.
+            public DateTime WaitStart { get; private set; }
+            public DateTime DueAt { get; private set; }
+
+            public void WaitUntil(DateTime dueAt)
+            {
+                WaitStart = DateTime.Now;
+                DueAt = dueAt;
+            }
+
+            // Its row, while syncing.
+            public ScheduleBar? Bar { get; set; }
+            public Label? StatusLabel { get; set; }
+        }
+
+        /// <summary>
+        ///  One addon data folder pushed to one API endpoint on its own schedule, with its own backoff,
         ///  so a failing endpoint doesn't hold up the others.
         /// </summary>
-        private sealed class SyncJob(string name, string endpointPath, System.Windows.Forms.Timer timer,
-            DatUploader uploader, Dictionary<string, SyncRecord> syncedFiles)
+        private sealed class SyncJob(string name, bool inRaidsDb, string dataFolderName, string endpointPath,
+            Dictionary<string, SyncRecord> syncedFiles, Action<string> log) : TimedEvent(name, SyncIntervalMin, SyncIntervalMax)
         {
             public string Name { get; } = name;
+
+            /// <summary>True if the data folder is in the RaidsDB addon folder, false if in the PlayerDB one.</summary>
+            public bool InRaidsDb { get; } = inRaidsDb;
+            public string AddonName => InRaidsDb ? "RaidsDB" : "PlayerDB";
+            public string DataFolderName { get; } = dataFolderName;
             public string EndpointPath { get; } = endpointPath;
-            public System.Windows.Forms.Timer Timer { get; } = timer;
-            public DatUploader Uploader { get; } = uploader;
+            public DatUploader Uploader { get; } = new(m => log($"{name}: {m}"));
             public Dictionary<string, SyncRecord> SyncedFiles { get; } = syncedFiles;
 
             // Taken when sync starts. An empty Folder means this job is skipped.
             public string Folder { get; set; } = "";
             public string Url { get; set; } = "";
-            public bool Enabled => Folder.Length > 0;
-
-            public bool Syncing { get; set; }
-            public string Status { get; set; } = "";
+            public override bool Enabled => Folder.Length > 0;
 
             // Backoff state while the server (or folder) is failing.
             public int FailureCount { get; set; }
-            public DateTime NextAttempt { get; set; } = DateTime.MinValue;
+            public string? LastError { get; set; }
+        }
+
+        /// <summary>
+        ///  Work repeated while syncing, unless <paramref name="enabled"/> says it's not needed for this sync.
+        ///  <paramref name="run"/> returns why it failed, or null. A failure is logged as "Name: failure: why" when the
+        ///  reason changes and the next run retries; once it works again, "Name: recovered" is logged.
+        /// </summary>
+        private sealed class PeriodicTask(string name, string label, string failure, string recovered, TimeSpan interval,
+            Func<bool> enabled, Func<CancellationToken, Task<string?>> run) : TimedEvent(label, interval)
+        {
+            public string Name { get; } = name;
+            public string Failure { get; } = failure;
+            public string Recovered { get; } = recovered;
+            public override bool Enabled => enabled();
+            public Func<CancellationToken, Task<string?>> Run { get; } = run;
+
             public string? LastError { get; set; }
         }
 
         private IEnumerable<SyncJob> Jobs => [_players, _homes, _regrades, _inventory, _raids];
+
+        private IEnumerable<PeriodicTask> Tasks => [_ignoreList, _imageUploads, _demoOcrUploads];
+
+        // In the order their rows are shown.
+        private IEnumerable<TimedEvent> Scheduled => Jobs.Concat<TimedEvent>(Tasks);
 
         // The PlayerDB addon keeps players, houses, regrades (once HomeDB and RegradeDB) and inventory side by side;
         // each is synced if its folder is there.
         private static readonly string[] PlayerDbDataFolders =
             [AppSettings.PlayersFolder, AppSettings.HousesFolder, AppSettings.RegradesFolder, AppSettings.InventoryFolder];
 
+        // The header's tabs and the page each shows.
+        private readonly (NavTab Tab, BackdropPanel Page)[] _pages;
+
+        // The site's background, behind the pages.
+        private readonly Backdrop _backdrop;
+
         public Form1()
         {
             InitializeComponent();
-            _players = new SyncJob("Players", "/api/players", syncTimer, new DatUploader(m => Log($"Players: {m}")), _settings.SyncedFiles);
-            _homes = new SyncJob("Homes", "/api/homes", homesTimer, new DatUploader(m => Log($"Homes: {m}")), _settings.HomeSyncedFiles);
-            _regrades = new SyncJob("Regrades", "/api/regrades", regradesTimer, new DatUploader(m => Log($"Regrades: {m}")), _settings.RegradeSyncedFiles);
-            _inventory = new SyncJob("Inventory", "/api/inventory", inventoryTimer, new DatUploader(m => Log($"Inventory: {m}")), _settings.InventorySyncedFiles);
-            _raids = new SyncJob("Raids", "/api/raids", raidsTimer, new DatUploader(m => Log($"Raids: {m}")), _settings.RaidSyncedFiles);
+            // The site's emblem, at every size the taskbar and Alt+Tab ask for (the exe's own icon is the same file),
+            // and at the tray's size.
+            using (var stream = typeof(Form1).Assembly.GetManifestResourceStream("PlayerDBSync.app.ico"))
+            {
+                if (stream != null)
+                {
+                    var emblem = new Icon(stream);
+                    Icon = emblem;
+                    trayIcon.Icon = new Icon(emblem, SystemInformation.SmallIconSize);
+                }
+            }
+            // Always in the tray while the app runs: click it to bring the window back, right-click for its menu.
+            trayMenu.Renderer = new ThemedMenuRenderer();
+            trayIcon.Visible = true;
+            Theme.StyleWindow(this);
+            Theme.DarkScrollBars(txtLog);
+            _pages = [(navConfig, pnlConfig), (navRunning, pnlRunning), (navInfo, pnlInfo)];
+            LayoutHeader();
+            // No title bar: the header moves the window instead.
+            BorderlessWindow.AddDragHandles(this, pnlHeader, lblBrand, lblStatus);
+
+            _backdrop = new Backdrop(this);
+            foreach (var (_, page) in _pages)
+            {
+                page.Backdrop = _backdrop;
+            }
+            // Every page, not just the one showing: while the window is opening or minimised none counts as visible.
+            // Repainting a hidden page costs nothing.
+            _backdrop.Changed += () =>
+            {
+                foreach (var (_, page) in _pages)
+                {
+                    page.Invalidate(true);
+                }
+            };
+            // As tapping your name on the site: a different background now. A hidden extra, so nothing shows it can be clicked.
+            lblBrand.Click += (_, _) => _backdrop.ChangeNow();
+            Disposed += (_, _) => _backdrop.Dispose();
+
+            _players = new SyncJob("Players", inRaidsDb: false, AppSettings.PlayersFolder, "/api/players", _settings.SyncedFiles, Log);
+            _homes = new SyncJob("Homes", inRaidsDb: false, AppSettings.HousesFolder, "/api/homes", _settings.HomeSyncedFiles, Log);
+            _regrades = new SyncJob("Regrades", inRaidsDb: false, AppSettings.RegradesFolder, "/api/regrades", _settings.RegradeSyncedFiles, Log);
+            _inventory = new SyncJob("Inventory", inRaidsDb: false, AppSettings.InventoryFolder, "/api/inventory", _settings.InventorySyncedFiles, Log);
+            _raids = new SyncJob("Raids", inRaidsDb: true, AppSettings.RaidsFolder, "/api/raids", _settings.RaidSyncedFiles, Log);
+
             _imageUploader = new RaidImageUploader(m => Log($"Screenshots: {m}"));
             _demoOcrUploader = new DemoOcrUploader(m => Log($"Demo OCR: {m}"));
+            _ignoreList = new PeriodicTask("Raids", "Raid ignore list", "couldn't update the item ignore list", "ignore list download working again",
+                IgnoreListInterval, () => _raids.Enabled, RefreshIgnoreListAsync);
+            _imageUploads = new PeriodicTask("Screenshots", "Screenshots", "couldn't upload", "uploading working again",
+                UploadInterval, () => _raids.Enabled,
+                async ct => (await _imageUploader.UploadNextAsync(_baseUrl + RaidImageUploader.EndpointPath, _credentials, ct)).Error);
+            _demoOcrUploads = new PeriodicTask("Demo OCR", "Demo OCR", "couldn't upload", "uploading working again",
+                UploadInterval, () => _demosFolder.Length > 0,
+                async ct => (await _demoOcrUploader.UploadNextAsync(_baseUrl + DemoOcrUploader.EndpointPath, _credentials, ct)).Error);
+
+            ShowInfo();
         }
 
         private void Form1_Load(object? sender, EventArgs e)
@@ -113,14 +237,7 @@ namespace PlayerDBSync
         {
             // Resume syncing automatically when a previous run left complete settings;
             // otherwise wait for the user to fill them in and press Start.
-            var players = txtFolder.Text.Trim();
-            var raid = txtRaidFolder.Text.Trim();
-            if ((players.Length > 0 || raid.Length > 0)
-                && (players.Length == 0 || IsAddonFolder(players, PlayerDbDataFolders))
-                && (raid.Length == 0 || IsAddonFolder(raid, AppSettings.RaidsFolder))
-                && txtUrl.Text.Trim().Length > 0
-                && long.TryParse(txtUserId.Text.Trim(), out var id) && id > 0
-                && txtApiKey.Text.Length > 0)
+            if (InputProblem() == null)
             {
                 btnStart_Click(this, EventArgs.Empty);
             }
@@ -208,79 +325,297 @@ namespace PlayerDBSync
             _settings.RaidSyncTarget = Retarget(_raids, _settings.RaidSyncTarget);
 
             _cts = new CancellationTokenSource();
+            var token = _cts.Token;
             SetInputsEnabled(false);
             btnStart.Text = "Stop";
+            btnStart.Kind = ButtonKind.Secondary;
+            ShowPage(pnlRunning);
             foreach (var job in Jobs)
             {
                 job.Uploader.ResetCache();
                 job.FailureCount = 0;
-                job.NextAttempt = DateTime.MinValue;
                 job.LastError = null;
-                job.Status = "";
                 if (job.Enabled)
                 {
-                    Log($"{job.Name}: watching {job.Folder} (checking every {TimeSpan.FromMilliseconds(job.Timer.Interval).TotalMinutes:0.#} min)");
+                    Log($"{job.Name}: watching {job.Folder} (checking every {job.Every})");
                 }
             }
-            _lastIgnoreError = null;
+            foreach (var task in Tasks)
+            {
+                task.LastError = null;
+            }
+            // Each is done once now (below); this only holds off scheduleTimer until that has started.
+            foreach (var ev in Scheduled)
+            {
+                ev.Failing = false;
+                ev.WaitUntil(DateTime.Now + ev.NextWait());
+            }
             _imageUploader.ResetCache();
-            _lastImagesError = null;
             _demoOcrUploader.ResetCache();
-            _lastDemoOcrError = null;
             if (_demosFolder.Length > 0)
             {
-                Log($"Demo OCR: uploading new screenshots from {DemoOcr.OutputFolder} every {TimeSpan.FromMilliseconds(demoOcrTimer.Interval).TotalSeconds:0} s");
-
-                // Runs all the time; it does nothing while the box is unticked.
-                // A thread from the previous run may still be finishing a screenshot.
-                _demoOcrThread?.Join(TimeSpan.FromSeconds(10));
+                Log($"Demo OCR: uploading new screenshots from {DemoOcr.OutputFolder} every {_demoOcrUploads.Every}");
                 var demosFolder = _demosFolder;
-                var demoToken = _cts.Token;
-                _demoOcrThread = new Thread(() => WatchDemoOcrRequests(demosFolder, demoToken))
-                {
-                    IsBackground = true,
-                    Name = "Demo OCR screenshots",
-                };
-                _demoOcrThread.Start();
+                _demoOcrThread = StartWatcher(_demoOcrThread, "Demo OCR screenshots", () => WatchDemoOcrRequests(demosFolder, token));
             }
             else if (chkDemoOcr.Checked)
             {
-                Log("Demo OCR: needs the PlayerDB addon's Demos folder; update the addon, run the game with it enabled, then stop and start again");
+                Log(DemoOcrNeedsDemosFolder);
             }
             if (_raids.Enabled)
             {
-                Log($"Raids: downloading the item ignore list every {TimeSpan.FromMilliseconds(ignoreTimer.Interval).TotalMinutes:0.#} min");
-                Log($"Screenshots: uploading new ones from {RaidScreenshot.OutputFolder} every {TimeSpan.FromMilliseconds(imagesTimer.Interval).TotalSeconds:0} s, up to {RaidImageUploader.MaxPerUpload} at a time");
-
-                // Runs all the time; it does nothing while the box is unticked.
-                // A thread from the previous run may still be finishing a screenshot.
-                _screenshotThread?.Join(TimeSpan.FromSeconds(10));
+                Log($"Raids: downloading the item ignore list every {_ignoreList.Every}");
+                Log($"Screenshots: uploading new ones from {RaidScreenshot.OutputFolder} every {_imageUploads.Every}, up to {RaidImageUploader.MaxPerUpload} at a time");
                 var raidsFolder = _raids.Folder;
-                var token = _cts.Token;
-                _screenshotThread = new Thread(() => WatchScreenshotRequests(raidsFolder, token))
-                {
-                    IsBackground = true,
-                    Name = "Raid screenshots",
-                };
-                _screenshotThread.Start();
+                _screenshotThread = StartWatcher(_screenshotThread, "Raid screenshots", () => WatchScreenshotRequests(raidsFolder, token));
             }
 
-            await Task.WhenAll(Jobs.Select(RunSyncAsync).Append(RefreshIgnoreListAsync()).Append(StartImageUploadsAsync()).Append(UploadDemoOcrAsync()));
-            if (_cts != null)
+            ShowScheduleRows(true);
+            var firstRuns = Task.WhenAll(Jobs.Select(RunSyncAsync)
+                .Append(RunAsync(_ignoreList))
+                .Append(StartImageUploadsAsync())
+                .Append(RunAsync(_demoOcrUploads)));
+            scheduleTimer.Start();
+            await firstRuns;
+        }
+
+        /// <summary>Does whatever is due, and moves each row's bar on.</summary>
+        private void scheduleTimer_Tick(object? sender, EventArgs e)
+        {
+            var now = DateTime.Now;
+            foreach (var ev in Scheduled.Where(ev => ev.Enabled))
             {
-                if (_demosFolder.Length > 0)
+                if (!ev.Running && now >= ev.DueAt)
                 {
-                    demoOcrTimer.Start();
+                    // Both catch their own errors.
+                    _ = ev switch
+                    {
+                        SyncJob job => RunSyncAsync(job),
+                        PeriodicTask task => RunAsync(task),
+                        _ => Task.CompletedTask,
+                    };
                 }
-                foreach (var job in Jobs.Where(j => j.Enabled))
+                ShowProgress(ev, now);
+            }
+        }
+
+        /// <summary>
+        ///  The bar is full when the event was just done and empties until it's due; a stretch of it sweeps along while
+        ///  it's being done. It's red while the event is failing.
+        /// </summary>
+        private static void ShowProgress(TimedEvent ev, DateTime now)
+        {
+            if (ev.Bar == null)
+            {
+                return;
+            }
+            ev.Bar.Running = ev.Running;
+            ev.Bar.FillColor = ev.Failing ? Theme.Bad : Theme.Accent;
+            var wait = (ev.DueAt - ev.WaitStart).TotalMilliseconds;
+            var left = (ev.DueAt - now).TotalMilliseconds;
+            ev.Bar.Fraction = wait <= 0 ? 0 : (float)(left / wait);
+        }
+
+        /// <summary>
+        ///  While syncing, a row for each event done this sync: its name, its bar and its status. While stopped, none,
+        ///  just a note saying so. The log takes the room left below.
+        /// </summary>
+        private void ShowScheduleRows(bool syncing)
+        {
+            tblSchedule.SuspendLayout();
+            foreach (var control in tblSchedule.Controls.Cast<Control>().ToList())
+            {
+                control.Dispose();
+            }
+            tblSchedule.RowStyles.Clear();
+            tblSchedule.RowCount = 0;
+            foreach (var ev in Scheduled)
+            {
+                ev.Bar = null;
+                ev.StatusLabel = null;
+            }
+
+            foreach (var ev in syncing ? Scheduled.Where(ev => ev.Enabled) : [])
+            {
+                ev.Bar = new ScheduleBar
                 {
-                    job.Timer.Start();
-                }
-                if (_raids.Enabled)
-                {
-                    ignoreTimer.Start();
-                    imagesTimer.Start();
-                }
+                    Anchor = AnchorStyles.Left | AnchorStyles.Right,
+                    Height = 16,
+                    Fraction = 1,
+                    Margin = new Padding(0, 5, 16, 5),
+                };
+                ev.StatusLabel = new Label { AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = Theme.Muted };
+                AddRow(tblSchedule,
+                    new Label { Text = ev.Label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 5, 16, 5) },
+                    ev.Bar,
+                    ev.StatusLabel);
+            }
+            tblSchedule.ResumeLayout();
+
+            tblSchedule.Height = tblSchedule.RowCount == 0 ? 0 : tblSchedule.GetPreferredSize(new Size(tblSchedule.Width, 0)).Height;
+            lblNotSyncing.Visible = !syncing;
+            cardSchedule.Height = (syncing ? tblSchedule.Bottom : lblNotSyncing.Bottom) + 16;
+            var logTop = cardSchedule.Bottom + 12;
+            cardLog.SetBounds(cardLog.Left, logTop, cardLog.Width, cardLog.Bottom - logTop);
+
+            lblStatus.Text = syncing ? "● Syncing" : "Stopped";
+            lblStatus.ForeColor = syncing ? Theme.Good : Theme.Muted;
+            trayIcon.Text = syncing ? "PlayerDB Sync – syncing" : "PlayerDB Sync – stopped";
+            LayoutHeader();
+        }
+
+        private static void AddRow(TableLayoutPanel table, params Control[] cells)
+        {
+            int row = table.RowCount++;
+            table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            for (int column = 0; column < cells.Length; column++)
+            {
+                table.Controls.Add(cells[column], column, row);
+            }
+        }
+
+        /// <summary>The page tabs one after another past the name, each as wide as its word; the status beside the Start button.</summary>
+        private void LayoutHeader()
+        {
+            int x = lblBrand.Right + 16;
+            foreach (var (tab, _) in _pages)
+            {
+                // Clear of the top edge, which resizes the window; the text and its underline stay centred.
+                tab.SetBounds(x, 8, tab.GetPreferredSize(Size.Empty).Width, pnlHeader.Height - 16);
+                x = tab.Right;
+            }
+            lblStatus.Location = new Point(btnStart.Left - 12 - lblStatus.Width, (pnlHeader.Height - lblStatus.Height) / 2);
+        }
+
+        private void navTab_Click(object? sender, EventArgs e) => ShowPage(_pages.First(p => p.Tab == sender).Page);
+
+        private void ShowPage(BackdropPanel page)
+        {
+            foreach (var (tab, p) in _pages)
+            {
+                tab.Active = p == page;
+                p.Visible = p == page;
+            }
+        }
+
+        private const string RepositoryUrl = "https://github.com/Madpeterz/PlayerDBSync";
+
+        /// <summary>The Info page: the version, what is synced where and how often, and the folders the app keeps things in.</summary>
+        private void ShowInfo()
+        {
+            // A release's version is the tag it was built from; ProductVersion adds "+<commit>".
+            lblVersion.Text = $"v{Application.ProductVersion.Split('+')[0]}";
+            lblVersion.Left = lblAboutTitle.Right + 4;
+            int x = lnkSite.Left;
+            foreach (var link in new[] { lnkSite, lnkReleases, lnkReadme })
+            {
+                StyleLink(link);
+                link.Left = x;
+                x = link.Right + 20;
+            }
+
+            AddRow(tblUploads, InfoCell("From", Theme.Muted, Theme.Strong), InfoCell("Sent to", Theme.Muted, Theme.Strong), InfoCell("Every", Theme.Muted, Theme.Strong));
+            foreach (var job in Jobs)
+            {
+                AddRow(tblUploads, InfoCell($"{job.AddonName} {job.DataFolderName} folder"), InfoCell(job.EndpointPath, Theme.Muted, Theme.Mono), InfoCell(job.Every));
+            }
+            AddRow(tblUploads, InfoCell("Raid screenshots"), InfoCell(RaidImageUploader.EndpointPath, Theme.Muted, Theme.Mono), InfoCell(Every(UploadInterval)));
+            AddRow(tblUploads, InfoCell("Demo OCR screenshots"), InfoCell(DemoOcrUploader.EndpointPath, Theme.Muted, Theme.Mono), InfoCell(Every(UploadInterval)));
+            AddRow(tblUploads, InfoCell("Raid item ignore list (downloaded)"), InfoCell(RaidIgnoreList.EndpointPath, Theme.Muted, Theme.Mono), InfoCell(Every(IgnoreListInterval)));
+
+            foreach (var (name, folder) in new[]
+            {
+                ("Settings", AppSettings.SettingsFolder),
+                ("Raid screenshots", RaidScreenshot.OutputFolder),
+                ("Demo OCR screenshots", DemoOcr.OutputFolder),
+            })
+            {
+                var link = new LinkLabel { Text = WithoutUserName(folder), AutoSize = true, Margin = new Padding(0, 3, 0, 3) };
+                StyleLink(link);
+                link.LinkClicked += (_, _) => OpenFolder(folder);
+                AddRow(tblFiles, InfoCell(name, Theme.Muted), link);
+            }
+
+            // Each card as tall as its table, one under another.
+            foreach (var (card, table) in new[] { (cardUploads, tblUploads), (cardFiles, tblFiles) })
+            {
+                table.Height = table.GetPreferredSize(new Size(table.Width, 0)).Height;
+                card.Height = table.Bottom + 16;
+            }
+            cardFiles.Top = cardUploads.Bottom + 12;
+        }
+
+        /// <summary>
+        ///  <paramref name="path"/> with the user's profile folder name shown as %user% (C:\Users\%user%\AppData\…), so it can
+        ///  be shown, e.g. in a screenshot, without giving away the Windows user name.
+        /// </summary>
+        private static string WithoutUserName(string path)
+        {
+            // The profile folder's name, which isn't always the user name (e.g. an account renamed after it was made).
+            var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).TrimEnd('\\');
+            var users = Path.GetDirectoryName(profile);
+            if (users == null || !(path.Equals(profile, StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith(profile + "\\", StringComparison.OrdinalIgnoreCase)))
+            {
+                return path;
+            }
+            return Path.Combine(users, "%user%") + path[profile.Length..];
+        }
+
+        private static Label InfoCell(string text, Color? color = null, Font? font = null)
+        {
+            var label = new Label { Text = text, AutoSize = true, ForeColor = color ?? Theme.Text, Margin = new Padding(0, 3, 24, 3) };
+            if (font != null)
+            {
+                label.Font = font;
+            }
+            return label;
+        }
+
+        private static void StyleLink(LinkLabel link)
+        {
+            link.LinkColor = link.ActiveLinkColor = link.VisitedLinkColor = Theme.Accent;
+            link.LinkBehavior = LinkBehavior.HoverUnderline;
+        }
+
+        private void lnkSite_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        {
+            // Only ever a web address: the box could hold anything, and opening it would run it.
+            var url = AppSettings.NormalizeBaseUrl(txtUrl.Text);
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+            {
+                url = AppSettings.DefaultUrl;
+            }
+            OpenUrl(url);
+        }
+
+        private void lnkReleases_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e) => OpenUrl($"{RepositoryUrl}/releases/latest");
+
+        private void lnkReadme_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e) => OpenUrl($"{RepositoryUrl}#readme");
+
+        private void OpenUrl(string url)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Log($"Couldn't open {url}: {ex.Message}");
+            }
+        }
+
+        /// <summary>Opens <paramref name="folder"/> in Explorer, creating it if nothing has been saved there yet.</summary>
+        private void OpenFolder(string folder)
+        {
+            try
+            {
+                Directory.CreateDirectory(folder);
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(folder) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Log($"Couldn't open {folder}: {ex.Message}");
             }
         }
 
@@ -294,7 +629,7 @@ namespace PlayerDBSync
             {
                 return oldTarget;
             }
-            var target = $"{job.Folder}|{job.Url}|{_userId}";
+            var target = $"{job.Folder}|{job.Url}|{_credentials.UserId}";
             if (!string.Equals(oldTarget, target, StringComparison.OrdinalIgnoreCase))
             {
                 job.SyncedFiles.Clear();
@@ -302,65 +637,45 @@ namespace PlayerDBSync
             return target;
         }
 
-        private async void syncTimer_Tick(object? sender, EventArgs e)
+        /// <summary>"5 min", "30 s", for the log.</summary>
+        private static string Every(TimeSpan interval) =>
+            interval.TotalMinutes >= 1 ? $"{interval.TotalMinutes:0.#} min" : $"{interval.TotalSeconds:0} s";
+
+        /// <summary>"30–45 s" for a range (one unit, when both are under a minute), or as <see cref="Every(TimeSpan)"/> for a single interval.</summary>
+        private static string Every(TimeSpan min, TimeSpan max) =>
+            min == max ? Every(min)
+            : max.TotalMinutes < 1 ? $"{min.TotalSeconds:0}–{max.TotalSeconds:0} s"
+            : $"{Every(min)} – {Every(max)}";
+
+        /// <summary>
+        ///  Starts a screenshot thread for this sync, once <paramref name="previous"/> (the last sync's, which may still be
+        ///  finishing a screenshot) has had time to end. It runs all the time; it does nothing while its box is unticked.
+        /// </summary>
+        private static Thread StartWatcher(Thread? previous, string name, ThreadStart watch)
         {
-            await RunSyncAsync(_players);
+            previous?.Join(TimeSpan.FromSeconds(10));
+            var thread = new Thread(watch)
+            {
+                IsBackground = true,
+                Name = name,
+            };
+            thread.Start();
+            return thread;
         }
 
-        private async void homesTimer_Tick(object? sender, EventArgs e)
+        private async Task RunAsync(PeriodicTask task)
         {
-            await RunSyncAsync(_homes);
-        }
-
-        private async void regradesTimer_Tick(object? sender, EventArgs e)
-        {
-            await RunSyncAsync(_regrades);
-        }
-
-        private async void inventoryTimer_Tick(object? sender, EventArgs e)
-        {
-            await RunSyncAsync(_inventory);
-        }
-
-        private async void raidsTimer_Tick(object? sender, EventArgs e)
-        {
-            await RunSyncAsync(_raids);
-        }
-
-        private async void ignoreTimer_Tick(object? sender, EventArgs e)
-        {
-            await RefreshIgnoreListAsync();
-        }
-
-        /// <summary>Downloads the raid item ignore list into the RaidsDB addon folder.</summary>
-        private async Task RefreshIgnoreListAsync()
-        {
-            if (_ignoreRefreshing || _cts == null || !_raids.Enabled)
+            if (task.Running || _cts == null || !task.Enabled)
             {
                 return;
             }
 
-            _ignoreRefreshing = true;
+            task.Running = true;
             var ct = _cts.Token;
             string? error;
             try
             {
-                var (items, downloadError) = await RaidIgnoreList.DownloadAsync(_raidIgnoreUrl, _userId, _apiKey, ct);
-                error = downloadError;
-                if (items != null)
-                {
-                    var addonFolder = Path.GetDirectoryName(_raids.Folder)!;
-                    if (await Task.Run(() => RaidIgnoreList.Save(addonFolder, items), ct))
-                    {
-                        Log($"Raids: saved the item ignore list ({items.Count} items) to {Path.Combine(addonFolder, RaidIgnoreList.FileName)}");
-                    }
-                    if (_lastIgnoreError != null)
-                    {
-                        Log("Raids: ignore list download working again");
-                    }
-                    _lastIgnoreError = null;
-                    return;
-                }
+                error = await task.Run(ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -372,27 +687,52 @@ namespace PlayerDBSync
             }
             finally
             {
-                _ignoreRefreshing = false;
+                task.Running = false;
             }
 
-            // Only log when the error changes; the next tick retries.
-            error = $"Raids: couldn't update the item ignore list: {error} – retrying in {TimeSpan.FromMilliseconds(ignoreTimer.Interval).TotalMinutes:0.#} min";
-            if (error != _lastIgnoreError)
+            task.WaitUntil(DateTime.Now + task.NextWait());
+            task.Failing = error != null;
+            if (error == null)
+            {
+                if (task.LastError != null)
+                {
+                    Log($"{task.Name}: {task.Recovered}");
+                }
+                task.LastError = null;
+                SetStatus(task, $"Last checked {DateTime.Now:T}");
+                return;
+            }
+            SetStatus(task, $"Failing – next try {task.DueAt:T}");
+
+            // Only log when the error changes; the next run retries.
+            error = $"{task.Name}: {task.Failure}: {error} – retrying in {task.Every}";
+            if (error != task.LastError)
             {
                 Log(error);
-                _lastIgnoreError = error;
+                task.LastError = error;
             }
         }
 
-        private async void imagesTimer_Tick(object? sender, EventArgs e)
+        /// <summary>Downloads the raid item ignore list into the RaidsDB addon folder; returns why it couldn't, if it couldn't.</summary>
+        private async Task<string?> RefreshIgnoreListAsync(CancellationToken ct)
         {
-            await UploadImagesAsync();
+            var (items, error) = await RaidIgnoreList.DownloadAsync(_baseUrl + RaidIgnoreList.EndpointPath, _credentials, ct);
+            if (items == null)
+            {
+                return error;
+            }
+            var addonFolder = Path.GetDirectoryName(_raids.Folder)!;
+            if (await Task.Run(() => RaidIgnoreList.Save(addonFolder, items), ct))
+            {
+                Log($"Raids: saved the item ignore list ({items.Count} items) to {Path.Combine(addonFolder, RaidIgnoreList.FileName)}");
+            }
+            return null;
         }
 
         /// <summary>When sync starts: scales down screenshots waiting from before, then uploads the first few.</summary>
         private async Task StartImageUploadsAsync()
         {
-            if (_cts == null || !_raids.Enabled)
+            if (_cts == null || !_imageUploads.Enabled)
             {
                 return;
             }
@@ -409,104 +749,7 @@ namespace PlayerDBSync
             {
                 Log($"Screenshots: couldn't resize the waiting screenshots: {ex.Message}");
             }
-            await UploadImagesAsync();
-        }
-
-        /// <summary>Uploads the next few raid screenshots waiting to be sent.</summary>
-        private async Task UploadImagesAsync()
-        {
-            if (_imagesUploading || _cts == null || !_raids.Enabled)
-            {
-                return;
-            }
-
-            _imagesUploading = true;
-            var ct = _cts.Token;
-            string? error;
-            try
-            {
-                (_, error) = await _imageUploader.UploadNextAsync(_raidImagesUrl, _userId, _apiKey, ct);
-                if (error == null)
-                {
-                    if (_lastImagesError != null)
-                    {
-                        Log("Screenshots: uploading working again");
-                    }
-                    _lastImagesError = null;
-                    return;
-                }
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                error = ex.Message;
-            }
-            finally
-            {
-                _imagesUploading = false;
-            }
-
-            // Only log when the error changes; the next tick retries.
-            error = $"Screenshots: couldn't upload: {error} – retrying in {TimeSpan.FromMilliseconds(imagesTimer.Interval).TotalSeconds:0} s";
-            if (error != _lastImagesError)
-            {
-                Log(error);
-                _lastImagesError = error;
-            }
-        }
-
-        private async void demoOcrTimer_Tick(object? sender, EventArgs e)
-        {
-            await UploadDemoOcrAsync();
-        }
-
-        /// <summary>Uploads the next few Demo OCR screenshots waiting to be sent.</summary>
-        private async Task UploadDemoOcrAsync()
-        {
-            if (_demoOcrUploading || _cts == null || _demosFolder.Length == 0)
-            {
-                return;
-            }
-
-            _demoOcrUploading = true;
-            var ct = _cts.Token;
-            string? error;
-            try
-            {
-                (_, error) = await _demoOcrUploader.UploadNextAsync(_demoOcrUrl, _userId, _apiKey, ct);
-                if (error == null)
-                {
-                    if (_lastDemoOcrError != null)
-                    {
-                        Log("Demo OCR: uploading working again");
-                    }
-                    _lastDemoOcrError = null;
-                    return;
-                }
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                error = ex.Message;
-            }
-            finally
-            {
-                _demoOcrUploading = false;
-            }
-
-            // Only log when the error changes; the next tick retries.
-            error = $"Demo OCR: couldn't upload: {error} – retrying in {TimeSpan.FromMilliseconds(demoOcrTimer.Interval).TotalSeconds:0} s";
-            if (error != _lastDemoOcrError)
-            {
-                Log(error);
-                _lastDemoOcrError = error;
-            }
+            await RunAsync(_imageUploads);
         }
 
         private void chkDemoOcr_CheckedChanged(object? sender, EventArgs e)
@@ -519,7 +762,7 @@ namespace PlayerDBSync
             SaveSettings();
             if (chkDemoOcr.Checked && _cts != null && _demosFolder.Length == 0)
             {
-                Log("Demo OCR: needs the PlayerDB addon's Demos folder; update the addon, run the game with it enabled, then stop and start again");
+                Log(DemoOcrNeedsDemosFolder);
             }
         }
 
@@ -543,16 +786,8 @@ namespace PlayerDBSync
         /// </summary>
         private async void btnClearData_Click(object? sender, EventArgs e)
         {
-            var players = txtFolder.Text.Trim();
-            var raid = txtRaidFolder.Text.Trim();
-            var folders = new[]
-                {
-                    (Job: _players, Path: DataFolder(players, AppSettings.PlayersFolder)),
-                    (Job: _homes, Path: DataFolder(players, AppSettings.HousesFolder)),
-                    (Job: _regrades, Path: DataFolder(players, AppSettings.RegradesFolder)),
-                    (Job: _inventory, Path: DataFolder(players, AppSettings.InventoryFolder)),
-                    (Job: _raids, Path: DataFolder(raid, AppSettings.RaidsFolder)),
-                }
+            var folders = Jobs
+                .Select(job => (Job: job, Path: DataFolder(AddonFolderOf(job), job.DataFolderName)))
                 .Where(f => f.Path.Length > 0)
                 .Select(f => (f.Job, f.Path, Files: Directory.GetFiles(f.Path, "*.dat", SearchOption.TopDirectoryOnly)))
                 .ToList();
@@ -570,7 +805,7 @@ namespace PlayerDBSync
             {
                 Caption = "Clear addon data",
                 Heading = "Please make sure you have disabled the addons and reloaded if you are ingame first",
-                Text = $"{total} addon data file{(total == 1 ? "" : "s")} will be moved to the Recycle Bin:\n\n"
+                Text = $"{Words.Count(total, "addon data file")} will be moved to the Recycle Bin:\n\n"
                     + string.Join("\n", folders.Where(f => f.Files.Length > 0).Select(f => $"{f.Path}: {f.Files.Length}"))
                     + "\n\nThe addons start collecting again from scratch.",
                 Icon = TaskDialogIcon.Warning,
@@ -606,7 +841,8 @@ namespace PlayerDBSync
             }
             SaveSettings();
 
-            Log($"Cleared {cleared} addon data file{(cleared == 1 ? "" : "s")} (moved to the Recycle Bin)");
+            var summary = $"Cleared {Words.Count(cleared, "addon data file")} (moved to the Recycle Bin)";
+            Log(summary);
             foreach (var failure in failed)
             {
                 Log($"Couldn't clear {failure}");
@@ -617,26 +853,13 @@ namespace PlayerDBSync
             {
                 Caption = "Clear addon data",
                 Heading = "Please re-enable your addons",
-                Text = $"Cleared {cleared} addon data file{(cleared == 1 ? "" : "s")} (moved to the Recycle Bin)."
-                    + (failed.Count > 0 ? $"\n\n{failed.Count} couldn't be cleared; the log says why." : ""),
+                Text = summary + "." + (failed.Count > 0 ? $"\n\n{failed.Count} couldn't be cleared; the log says why." : ""),
                 Icon = failed.Count > 0 ? TaskDialogIcon.Warning : TaskDialogIcon.Information,
                 Buttons = { TaskDialogButton.OK },
             });
         }
 
-        private void btnOpenScreenshots_Click(object? sender, EventArgs e)
-        {
-            try
-            {
-                // Created if no screenshot has been saved yet, so there's always something to open.
-                Directory.CreateDirectory(RaidScreenshot.OutputFolder);
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(RaidScreenshot.OutputFolder) { UseShellExecute = true });
-            }
-            catch (Exception ex)
-            {
-                Log($"Couldn't open the screenshot folder: {ex.Message}");
-            }
-        }
+        private void btnOpenScreenshots_Click(object? sender, EventArgs e) => OpenFolder(RaidScreenshot.OutputFolder);
 
         /// <summary>
         ///  The screenshot thread: checks for request.sht every <see cref="ScreenshotCheckInterval"/> and answers it.
@@ -678,7 +901,7 @@ namespace PlayerDBSync
                     }
                     else
                     {
-                        var (image, captureError) = RaidScreenshot.CaptureGame();
+                        var (image, captureError) = GameCapture.Capture();
                         if (image != null)
                         {
                             using (image)
@@ -761,7 +984,7 @@ namespace PlayerDBSync
                     }
                     else
                     {
-                        var (image, captureError) = RaidScreenshot.CaptureGame();
+                        var (image, captureError) = GameCapture.Capture();
                         if (image != null)
                         {
                             using (image)
@@ -819,7 +1042,7 @@ namespace PlayerDBSync
                 BeginInvoke(async () =>
                 {
                     await Task.Delay(DemoOcrUploader.SettleTime + TimeSpan.FromMilliseconds(250));
-                    await UploadDemoOcrAsync();
+                    await RunAsync(_demoOcrUploads);
                 });
             }
             catch (InvalidOperationException)
@@ -855,18 +1078,17 @@ namespace PlayerDBSync
 
         private async Task RunSyncAsync(SyncJob job)
         {
-            // Small tolerance so timer jitter doesn't push a retry out by a whole extra tick.
-            if (job.Syncing || _cts == null || !job.Enabled || DateTime.Now + TimeSpan.FromSeconds(1) < job.NextAttempt)
+            if (job.Running || _cts == null || !job.Enabled)
             {
                 return;
             }
 
-            job.Syncing = true;
+            job.Running = true;
             var ct = _cts.Token;
             SetStatus(job, "Checking for changes…");
             try
             {
-                var result = await job.Uploader.SyncAsync(job.Folder, job.Url, _userId, _apiKey, job.SyncedFiles, ct);
+                var result = await job.Uploader.SyncAsync(job.Folder, job.Url, _credentials, job.SyncedFiles, ct);
                 if (result.StateChanged)
                 {
                     SaveSettings();
@@ -895,7 +1117,7 @@ namespace PlayerDBSync
             }
             finally
             {
-                job.Syncing = false;
+                job.Running = false;
             }
         }
 
@@ -906,22 +1128,24 @@ namespace PlayerDBSync
                 Log($"{job.Name}: connection restored");
             }
             job.FailureCount = 0;
-            job.NextAttempt = DateTime.MinValue;
             job.LastError = null;
+            job.Failing = false;
+            job.WaitUntil(DateTime.Now + job.NextWait());
             SetStatus(job, $"Last checked {DateTime.Now:T}");
         }
 
         private void OnSyncFailed(SyncJob job, string error)
         {
             job.FailureCount++;
+            job.Failing = true;
 
-            // 5m, 10m, 20m, then capped at 30m.
-            var delay = TimeSpan.FromMilliseconds(job.Timer.Interval * Math.Pow(2, Math.Min(job.FailureCount - 1, 10)));
+            // A sync's wait (30–45 s), doubled for each failure in a row, up to 30 min.
+            var delay = job.NextWait() * Math.Pow(2, Math.Min(job.FailureCount - 1, 10));
             if (delay > MaxBackoff)
             {
                 delay = MaxBackoff;
             }
-            job.NextAttempt = DateTime.Now + delay;
+            job.WaitUntil(DateTime.Now + delay);
 
             // Only log when the error changes; repeats just update the status line.
             if (error != job.LastError)
@@ -929,105 +1153,98 @@ namespace PlayerDBSync
                 Log($"{job.Name}: {error} – retrying with backoff");
                 job.LastError = error;
             }
-            SetStatus(job, $"Failing ({job.FailureCount}x) – next try {job.NextAttempt:T}");
+            SetStatus(job, $"Failing ({job.FailureCount}x) – next try {job.DueAt:T}");
         }
 
-        private void SetStatus(SyncJob job, string status)
+        /// <summary>Shown beside the event's bar (red while failing); dropped once the sync has stopped and the rows have gone.</summary>
+        private static void SetStatus(TimedEvent ev, string status)
         {
-            if (_cts == null)
+            if (ev.StatusLabel != null)
             {
-                return;
+                ev.StatusLabel.Text = status;
+                ev.StatusLabel.ForeColor = ev.Failing ? Theme.Bad : Theme.Muted;
             }
-            job.Status = status;
-            lblStatus.Text = string.Join(Environment.NewLine, Jobs.Where(j => j.Enabled).Select(j => $"{j.Name}: {j.Status}"));
         }
 
         private void StopSync()
         {
-            foreach (var job in Jobs)
-            {
-                job.Timer.Stop();
-            }
-            ignoreTimer.Stop();
-            imagesTimer.Stop();
-            demoOcrTimer.Stop();
+            scheduleTimer.Stop();
             _cts?.Cancel();
             _cts?.Dispose();
             _cts = null;
             SetInputsEnabled(true);
             btnStart.Text = "Start";
-            lblStatus.Text = "Stopped";
+            btnStart.Kind = ButtonKind.Primary;
+            ShowScheduleRows(false);
             Log("Stopped");
         }
 
-        private bool ValidateInputs()
+        /// <summary>The first thing wrong with the settings in the boxes, and the box to fix it in; null if there's nothing.</summary>
+        private (string Message, Control Box)? InputProblem()
         {
             // Either folder may be left empty to skip that sync, but not both.
             var playersFolder = txtFolder.Text.Trim();
             var raidFolder = txtRaidFolder.Text.Trim();
             if (playersFolder.Length == 0 && raidFolder.Length == 0)
             {
-                ShowError("Select a PlayerDB or RaidsDB addon folder to sync.", txtFolder);
-                return false;
+                return ("Select a PlayerDB or RaidsDB addon folder to sync.", txtFolder);
             }
             if (playersFolder.Length > 0 && !IsAddonFolder(playersFolder, PlayerDbDataFolders))
             {
-                ShowError(NotAddonMessage(playersFolder, "PlayerDB", PlayerDbDataFolders), txtFolder);
-                return false;
+                return (NotAddonMessage(playersFolder, "PlayerDB", PlayerDbDataFolders), txtFolder);
             }
             if (raidFolder.Length > 0 && !IsAddonFolder(raidFolder, AppSettings.RaidsFolder))
             {
-                ShowError(NotAddonMessage(raidFolder, "RaidsDB", [AppSettings.RaidsFolder]), txtRaidFolder);
-                return false;
+                return (NotAddonMessage(raidFolder, "RaidsDB", [AppSettings.RaidsFolder]), txtRaidFolder);
             }
 
             var url = AppSettings.NormalizeBaseUrl(txtUrl.Text);
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
             {
-                ShowError("Enter a valid http(s) server URL.", txtUrl);
-                return false;
+                return ("Enter a valid http(s) server URL.", txtUrl);
             }
 
             if (!long.TryParse(txtUserId.Text.Trim(), out var userId) || userId <= 0)
             {
-                ShowError("User ID must be a positive number.", txtUserId);
-                return false;
+                return ("User ID must be a positive number.", txtUserId);
             }
 
             if (string.IsNullOrEmpty(txtApiKey.Text))
             {
-                ShowError("Enter your API key.", txtApiKey);
+                return ("Enter your API key.", txtApiKey);
+            }
+            return null;
+        }
+
+        /// <summary>Checks the settings in the boxes and, if they're fine, takes them for the sync about to start.</summary>
+        private bool ValidateInputs()
+        {
+            if (InputProblem() is { } problem)
+            {
+                ShowError(problem.Message, problem.Box);
                 return false;
             }
 
+            var url = AppSettings.NormalizeBaseUrl(txtUrl.Text);
             txtUrl.Text = url;
-            _players.Folder = DataFolder(playersFolder, AppSettings.PlayersFolder);
-            _homes.Folder = DataFolder(playersFolder, AppSettings.HousesFolder);
-            _regrades.Folder = DataFolder(playersFolder, AppSettings.RegradesFolder);
-            _inventory.Folder = DataFolder(playersFolder, AppSettings.InventoryFolder);
-            _raids.Folder = DataFolder(raidFolder, AppSettings.RaidsFolder);
-            _demosFolder = DataFolder(playersFolder, AppSettings.DemosFolder);
-            if (playersFolder.Length > 0)
-            {
-                foreach (var (job, dataFolder) in new[] { (_players, AppSettings.PlayersFolder), (_homes, AppSettings.HousesFolder), (_regrades, AppSettings.RegradesFolder), (_inventory, AppSettings.InventoryFolder) })
-                {
-                    if (!job.Enabled)
-                    {
-                        Log($"{job.Name}: skipped, the PlayerDB addon has no {dataFolder} folder yet (stop and start again once it has)");
-                    }
-                }
-            }
             foreach (var job in Jobs)
             {
+                var addonFolder = AddonFolderOf(job);
+                job.Folder = DataFolder(addonFolder, job.DataFolderName);
                 job.Url = url + job.EndpointPath;
+                if (addonFolder.Length > 0 && !job.Enabled)
+                {
+                    Log($"{job.Name}: skipped, the {job.AddonName} addon has no {job.DataFolderName} folder yet (stop and start again once it has)");
+                }
             }
-            _raidIgnoreUrl = url + RaidIgnoreList.EndpointPath;
-            _raidImagesUrl = url + RaidImageUploader.EndpointPath;
-            _demoOcrUrl = url + DemoOcrUploader.EndpointPath;
-            _userId = userId;
-            _apiKey = txtApiKey.Text;
+            _demosFolder = DataFolder(txtFolder.Text.Trim(), AppSettings.DemosFolder);
+            _baseUrl = url;
+            _credentials = new ApiCredentials(long.Parse(txtUserId.Text.Trim()), txtApiKey.Text);
             return true;
         }
+
+        /// <summary>The addon folder typed in for <paramref name="job"/>'s addon; "" if none is.</summary>
+        private string AddonFolderOf(SyncJob job) => (job.InRaidsDb ? txtRaidFolder : txtFolder).Text.Trim();
 
         /// <summary>True if <paramref name="path"/> has the addon marker file and at least one of <paramref name="dataFolders"/>.</summary>
         private static bool IsAddonFolder(string path, params string[] dataFolders) =>
@@ -1043,20 +1260,26 @@ namespace PlayerDBSync
 
         private void ShowError(string message, Control focus)
         {
+            // The box to fix may be on another page.
+            if (_pages.FirstOrDefault(p => p.Page.Contains(focus)).Page is { } page)
+            {
+                ShowPage(page);
+            }
             MessageBox.Show(this, message, "PlayerDB Sync", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             focus.Focus();
         }
 
         private void SetInputsEnabled(bool enabled)
         {
-            txtFolder.Enabled = enabled;
+            // Read-only rather than disabled, so the boxes keep the theme's colours (Windows greys out disabled ones).
+            foreach (var box in new[] { txtFolder, txtRaidFolder, txtUrl, txtUserId, txtApiKey })
+            {
+                box.ReadOnly = !enabled;
+                box.ForeColor = enabled ? Theme.Text : Theme.Muted;
+            }
             btnBrowse.Enabled = enabled;
-            txtRaidFolder.Enabled = enabled;
             btnBrowseRaid.Enabled = enabled;
             btnClearData.Enabled = enabled;
-            txtUrl.Enabled = enabled;
-            txtUserId.Enabled = enabled;
-            txtApiKey.Enabled = enabled;
         }
 
         private void SaveSettings()
@@ -1089,15 +1312,86 @@ namespace PlayerDBSync
 
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
-            foreach (var job in Jobs)
-            {
-                job.Timer.Stop();
-            }
-            ignoreTimer.Stop();
-            imagesTimer.Stop();
-            demoOcrTimer.Stop();
+            scheduleTimer.Stop();
             _cts?.Cancel();
             SaveSettings();
+            // Gone at once, rather than lingering in the tray until the mouse passes over it.
+            trayIcon.Visible = false;
+        }
+
+        private void btnMinimize_Click(object? sender, EventArgs e) => WindowState = FormWindowState.Minimized;
+
+        private void trayIcon_MouseClick(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                ShowFromTray();
+            }
+        }
+
+        private void trayMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e) =>
+            mnuStartStop.Text = _cts == null ? "Start syncing" : "Stop syncing";
+
+        private void mnuShow_Click(object? sender, EventArgs e) => ShowFromTray();
+
+        private void mnuStartStop_Click(object? sender, EventArgs e)
+        {
+            // Starting with something to fix shows why, on the window.
+            if (_cts == null && InputProblem() != null)
+            {
+                ShowFromTray();
+            }
+            btnStart_Click(sender, e);
+        }
+
+        /// <summary>The window back from the tray: shown, restored if it was minimised, and in front.</summary>
+        private void ShowFromTray()
+        {
+            Show();
+            if (WindowState == FormWindowState.Minimized)
+            {
+                WindowState = FormWindowState.Normal;
+            }
+            Activate();
+        }
+
+        // Minimised (the – button, Win+M, its menu), it's only in the tray: hidden, so it leaves the taskbar.
+        // It keeps syncing; the tray icon brings it back.
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (WindowState == FormWindowState.Minimized && Visible)
+            {
+                Hide();
+            }
+        }
+
+        private void btnExit_Click(object? sender, EventArgs e) => Close();
+
+        private const int WsMinimizeBox = 0x20000;
+        private const int WsSysMenu = 0x80000;
+        private const int CsDropShadow = 0x20000;
+
+        // Without Windows' frame: still minimised and restored by clicking it on the taskbar, with its menu there
+        // (and Alt+Space), and a shadow to lift it off what's behind.
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.Style |= WsMinimizeBox | WsSysMenu;
+                cp.ClassStyle |= CsDropShadow;
+                return cp;
+            }
+        }
+
+        // Its edges resize it, as the frame's would.
+        protected override void WndProc(ref Message m)
+        {
+            if (!BorderlessWindow.HitTestEdge(this, ref m))
+            {
+                base.WndProc(ref m);
+            }
         }
     }
 }

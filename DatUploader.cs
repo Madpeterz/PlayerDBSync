@@ -1,7 +1,5 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace PlayerDBSync
 {
@@ -19,8 +17,6 @@ namespace PlayerDBSync
     {
         private const int MaxBatchSize = 500;
 
-        private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(100) };
-
         // Bookkeeping files the addons keep next to their records.
         private static readonly HashSet<string> IgnoredFiles = new(StringComparer.OrdinalIgnoreCase) { "_count.dat", "_files.dat" };
 
@@ -29,9 +25,8 @@ namespace PlayerDBSync
 
         private readonly Action<string> _log;
 
-        // Contents the server rejected as invalid, with the file stamp they were read at;
-        // not retried until the file changes. Deliberately not persisted, so a restart retries them.
-        private readonly Dictionary<string, (string Hash, long Size, DateTime LastWriteUtc)> _rejected = new(StringComparer.OrdinalIgnoreCase);
+        // Contents the server rejected as invalid.
+        private readonly RejectedFiles _rejected = new();
 
         // The server answers 418 both for a bad file and for bad credentials/clock. If two files are refused
         // on their own before anything this scan was accepted, it's almost certainly the credentials.
@@ -56,7 +51,7 @@ namespace PlayerDBSync
         ///  without being read. Changed files are sent in batches of up to <see cref="MaxBatchSize"/>.
         ///  Stops at the first server-level failure so a dead endpoint costs one request per scan.
         /// </summary>
-        public async Task<SyncResult> SyncAsync(string folder, string url, long userId, string apiKey,
+        public async Task<SyncResult> SyncAsync(string folder, string url, ApiCredentials credentials,
             Dictionary<string, SyncRecord> syncedFiles, CancellationToken ct)
         {
             if (!Directory.Exists(folder))
@@ -88,13 +83,12 @@ namespace PlayerDBSync
                     {
                         continue;
                     }
-                    if (_rejected.TryGetValue(name, out var rej) && rej.Size == info.Length && rej.LastWriteUtc == info.LastWriteTimeUtc)
+                    if (_rejected.Contains(info))
                     {
                         continue;
                     }
 
-                    // The game may still have the file open; share access so we don't block it.
-                    using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    using (var fs = FileHelper.OpenShared(path))
                     {
                         bytes = new byte[fs.Length];
                         await fs.ReadExactlyAsync(bytes, ct);
@@ -116,16 +110,16 @@ namespace PlayerDBSync
                     changed = true;
                     continue;
                 }
-                if (_rejected.TryGetValue(name, out var rejected) && rejected.Hash == hash)
+                if (_rejected.HasContents(name, hash))
                 {
-                    _rejected[name] = (hash, info.Length, info.LastWriteTimeUtc);
+                    _rejected.Add(name, info.Length, info.LastWriteTimeUtc, hash);
                     continue;
                 }
 
                 pending.Add(new PendingFile(name, bytes, hash, info.Length, info.LastWriteTimeUtc));
                 if (pending.Count == MaxBatchSize)
                 {
-                    var (count, error) = await UploadAsync(pending, url, userId, apiKey, syncedFiles, ct);
+                    var (count, error) = await UploadAsync(pending, url, credentials, syncedFiles, ct);
                     uploaded += count;
                     changed |= count > 0;
                     if (error != null)
@@ -138,7 +132,7 @@ namespace PlayerDBSync
 
             if (pending.Count > 0)
             {
-                var (count, error) = await UploadAsync(pending, url, userId, apiKey, syncedFiles, ct);
+                var (count, error) = await UploadAsync(pending, url, credentials, syncedFiles, ct);
                 uploaded += count;
                 changed |= count > 0;
                 if (error != null)
@@ -154,10 +148,10 @@ namespace PlayerDBSync
         ///  in half and retried, which isolates a bad file (and copes with a too-large request) in a few requests.
         /// </summary>
         /// <returns>Files uploaded, and the server-level error that stopped the upload, if any.</returns>
-        private async Task<(int Uploaded, string? Error)> UploadAsync(IReadOnlyList<PendingFile> files, string url, long userId,
-            string apiKey, Dictionary<string, SyncRecord> syncedFiles, CancellationToken ct)
+        private async Task<(int Uploaded, string? Error)> UploadAsync(IReadOnlyList<PendingFile> files, string url,
+            ApiCredentials credentials, Dictionary<string, SyncRecord> syncedFiles, CancellationToken ct)
         {
-            var (outcome, detail) = await PushAsync(url, userId, apiKey, files, ct);
+            var (outcome, detail) = await PushAsync(url, credentials, files, ct);
             switch (outcome)
             {
                 case PushOutcome.Success:
@@ -175,7 +169,7 @@ namespace PlayerDBSync
 
                 case PushOutcome.Rejected when files.Count == 1:
                     var bad = files[0];
-                    _rejected[bad.Name] = (bad.Hash, bad.Size, bad.LastWriteUtc);
+                    _rejected.Add(bad.Name, bad.Size, bad.LastWriteUtc, bad.Hash);
                     _rejectedThisScan.Add(bad.Name);
 
                     if (!_anyAcceptedThisScan && _rejectedThisScan.Count >= SingleRejectsMeaningAuthFailure)
@@ -193,12 +187,12 @@ namespace PlayerDBSync
 
                 case PushOutcome.Rejected:
                     int half = files.Count / 2;
-                    var first = await UploadAsync(files.Take(half).ToList(), url, userId, apiKey, syncedFiles, ct);
+                    var first = await UploadAsync(files.Take(half).ToList(), url, credentials, syncedFiles, ct);
                     if (first.Error != null)
                     {
                         return first;
                     }
-                    var second = await UploadAsync(files.Skip(half).ToList(), url, userId, apiKey, syncedFiles, ct);
+                    var second = await UploadAsync(files.Skip(half).ToList(), url, credentials, syncedFiles, ct);
                     return (first.Uploaded + second.Uploaded, second.Error);
 
                 default:
@@ -206,36 +200,22 @@ namespace PlayerDBSync
             }
         }
 
-        private static async Task<(PushOutcome, string)> PushAsync(string url, long userId, string apiKey,
+        private static async Task<(PushOutcome, string)> PushAsync(string url, ApiCredentials credentials,
             IReadOnlyList<PendingFile> files, CancellationToken ct)
         {
             var blobs = files.Select(f => Convert.ToBase64String(f.Bytes)).ToArray();
-            var unixtime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
-            // The secret covers blobdat exactly as sent; for an array, the strings joined with ",".
-            var secret = Convert.ToHexStringLower(
-                SHA256.HashData(Encoding.UTF8.GetBytes($"{userId}{string.Join(',', blobs)}{apiKey}{unixtime}")));
 
             // A single file keeps the original string form; batches send an array.
             object blobdat = blobs.Length == 1 ? blobs[0] : blobs;
-            var payload = new { blobdat, userid = userId, unixtime, secret };
 
             try
             {
-                using var response = await Http.PostAsJsonAsync(url, payload, ct);
+                using var response = await ApiClient.PostAsync(url, credentials, [("blobdat", blobdat)], ct);
                 if (response.IsSuccessStatusCode)
                 {
                     return (PushOutcome.Success, "");
                 }
-
-                // Collapse whitespace so pretty-printed JSON errors fit on one log line.
-                var body = string.Join(' ', (await response.Content.ReadAsStringAsync(ct))
-                    .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-                if (body.Length > 300)
-                {
-                    body = body[..300] + "…";
-                }
-                var detail = $"{(int)response.StatusCode} {response.ReasonPhrase} {body}".TrimEnd();
+                var detail = await ApiClient.DescribeAsync(response, ct);
 
                 // Possibly a problem with the submitted data (the server answers 418 for any refusal, bad
                 // credentials included; UploadAsync tells those apart). Anything else (404, 429, 5xx) affects every file.
@@ -245,13 +225,9 @@ namespace PlayerDBSync
                     or HttpStatusCode.UnprocessableEntity;
                 return (dataProblem ? PushOutcome.Rejected : PushOutcome.ServerError, detail);
             }
-            catch (HttpRequestException ex)
+            catch (Exception ex) when (ApiClient.FailureOf(ex, ct) is string failure)
             {
-                return (PushOutcome.ServerError, ex.Message);
-            }
-            catch (TaskCanceledException) when (!ct.IsCancellationRequested)
-            {
-                return (PushOutcome.ServerError, "Request timed out");
+                return (PushOutcome.ServerError, failure);
             }
         }
     }
