@@ -26,9 +26,9 @@ namespace PlayerDBSync
         // Earlier builds stored the full players endpoint (or a wrong "/api/player" default); trimmed back to the base URL.
         private static readonly string[] OldEndpointSuffixes = { "/api/players", "/api/player" };
 
-        private static readonly string SettingsDir =
+        public static readonly string SettingsFolder =
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PlayerDBSync");
-        private static readonly string SettingsPath = Path.Combine(SettingsDir, "settings.json");
+        private static readonly string SettingsPath = Path.Combine(SettingsFolder, "settings.json");
 
         /// <summary>
         ///  The PlayerDB addon folder, with its Players, Houses, Regrades and Inventory (earlier builds stored its Players
@@ -153,7 +153,7 @@ namespace PlayerDBSync
 
         public void Save()
         {
-            Directory.CreateDirectory(SettingsDir);
+            Directory.CreateDirectory(SettingsFolder);
             FileHelper.WriteAtomic(SettingsPath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
         }
     }

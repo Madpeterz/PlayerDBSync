@@ -6,10 +6,18 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- The site's emblem (its public/images/emblem.webp), for the exe; the window loads it from the embedded copy below -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="4.153.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The site's backgrounds (its public/images/background*.webp), shown behind the pages -->
+    <EmbeddedResource Include="Backgrounds\*.webp" />
+    <EmbeddedResource Include="app.ico" />
   </ItemGroup>
 
 </Project>
