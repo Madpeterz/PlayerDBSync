@@ -1,6 +1,7 @@
-using System.Net.Http.Json;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace PlayerDBSync
 {
@@ -35,7 +36,12 @@ namespace PlayerDBSync
             payload["userid"] = credentials.UserId;
             payload["unixtime"] = unixtime;
             payload["secret"] = secret;
-            return Http.PostAsJsonAsync(url, payload, ct);
+
+            // Serialized up front so the request has a Content-Length: PostAsJsonAsync streams it chunked,
+            // and PHP-FPM behind Apache reads a chunked body as empty (every field missing).
+            var content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(payload, JsonSerializerOptions.Web));
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+            return Http.PostAsync(url, content, ct);
         }
 
         /// <summary>The reply's body on one line (pretty-printed JSON errors included), cut short for the log.</summary>
