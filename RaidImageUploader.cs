@@ -15,6 +15,9 @@ namespace PlayerDBSync
 
         private readonly Action<string> _log;
 
+        // Where the screenshots wait: RaidScreenshot.OutputFolder, unless given another (tests).
+        private readonly string _folder;
+
         private readonly RejectedFiles _rejected = new();
 
         private sealed record PendingImage(FileInfo File, byte[] Bytes)
@@ -43,9 +46,10 @@ namespace PlayerDBSync
             public string? Reason { get; set; }
         }
 
-        public RaidImageUploader(Action<string> log)
+        public RaidImageUploader(Action<string> log, string? folder = null)
         {
             _log = log;
+            _folder = folder ?? RaidScreenshot.OutputFolder;
         }
 
         public void ResetCache() => _rejected.Clear();
@@ -60,11 +64,11 @@ namespace PlayerDBSync
             {
                 int resized = 0;
                 var errors = new List<string>();
-                if (!Directory.Exists(RaidScreenshot.OutputFolder))
+                if (!Directory.Exists(_folder))
                 {
                     return (resized, errors);
                 }
-                foreach (var path in Directory.EnumerateFiles(RaidScreenshot.OutputFolder, "*.webp", SearchOption.TopDirectoryOnly))
+                foreach (var path in Directory.EnumerateFiles(_folder, "*.webp", SearchOption.TopDirectoryOnly))
                 {
                     ct.ThrowIfCancellationRequested();
                     try
@@ -164,13 +168,13 @@ namespace PlayerDBSync
         /// <summary>The oldest images waiting that weren't turned away as they are now.</summary>
         private List<PendingImage> NextImages()
         {
-            if (!Directory.Exists(RaidScreenshot.OutputFolder))
+            if (!Directory.Exists(_folder))
             {
                 return [];
             }
 
             var images = new List<PendingImage>();
-            var files = new DirectoryInfo(RaidScreenshot.OutputFolder)
+            var files = new DirectoryInfo(_folder)
                 .EnumerateFiles("*.webp", SearchOption.TopDirectoryOnly)
                 .OrderBy(f => f.LastWriteTimeUtc)
                 .ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase);

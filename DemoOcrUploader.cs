@@ -18,6 +18,9 @@ namespace PlayerDBSync
 
         private readonly Action<string> _log;
 
+        // Where the pictures wait: DemoOcr.OutputFolder, unless given another (tests).
+        private readonly string _folder;
+
         // Pictures the server found wrong (422), or not named as we save them.
         private readonly RejectedFiles _rejected = new();
 
@@ -30,9 +33,10 @@ namespace PlayerDBSync
             public int Position { get; set; }
         }
 
-        public DemoOcrUploader(Action<string> log)
+        public DemoOcrUploader(Action<string> log, string? folder = null)
         {
             _log = log;
+            _folder = folder ?? DemoOcr.OutputFolder;
         }
 
         public void ResetCache() => _rejected.Clear();
@@ -59,12 +63,12 @@ namespace PlayerDBSync
         /// <summary>The oldest pictures waiting that weren't turned away as they are now.</summary>
         private List<FileInfo> NextFiles()
         {
-            if (!Directory.Exists(DemoOcr.OutputFolder))
+            if (!Directory.Exists(_folder))
             {
                 return [];
             }
             var settled = DateTime.UtcNow - SettleTime;
-            return new DirectoryInfo(DemoOcr.OutputFolder)
+            return new DirectoryInfo(_folder)
                 .EnumerateFiles("*.webp", SearchOption.TopDirectoryOnly)
                 .Where(f => f.LastWriteTimeUtc <= settled)
                 .Where(f => !_rejected.Contains(f))

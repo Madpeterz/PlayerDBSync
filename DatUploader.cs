@@ -15,7 +15,8 @@ namespace PlayerDBSync
     /// </summary>
     internal sealed class DatUploader
     {
-        private const int MaxBatchSize = 500;
+        /// <summary>The most files the server takes in one upload (its VerifiesUploads MAX_FILES).</summary>
+        public const int MaxBatchSize = 500;
 
         // Bookkeeping files the addons keep next to their records.
         private static readonly HashSet<string> IgnoredFiles = new(StringComparer.OrdinalIgnoreCase) { "_count.dat", "_files.dat" };

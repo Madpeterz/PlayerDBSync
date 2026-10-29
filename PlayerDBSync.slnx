@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="PlayerDBSync.csproj" />
+  <Project Path="PlayerDBSync.Tests/PlayerDBSync.Tests.csproj" />
 </Solution>

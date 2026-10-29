@@ -1,0 +1,21 @@
+2026-10-29T01:16:48.8499058+00:00 Microsoft.Testing.Platform.Builder.TestApplication INFORMATION Version: 1.9.1+cb5afc3bb9bb01ebd75b57f89e8358b914ee2a49
+2026-10-29T01:16:48.8562698+00:00 Microsoft.Testing.Platform.Builder.TestApplication INFORMATION Logging mode: asynchronous
+2026-10-29T01:16:48.8567971+00:00 Microsoft.Testing.Platform.Builder.TestApplication INFORMATION Logging level: Information
+2026-10-29T01:16:48.8568005+00:00 Microsoft.Testing.Platform.Builder.TestApplication INFORMATION CreateBuilderAsync entry time: 01:16:48.840
+2026-10-29T01:16:48.8568358+00:00 Microsoft.Testing.Platform.Builder.TestApplication INFORMATION PID: 2868
+2026-10-29T01:16:48.8568479+00:00 Microsoft.Testing.Platform.Builder.TestApplication INFORMATION Runtime information: win-x64 - .NET 10.0.12
+2026-10-29T01:16:48.8568572+00:00 Microsoft.Testing.Platform.Builder.TestApplication INFORMATION Runtime location: C:\Program Files\dotnet\shared\Microsoft.NETCore.App\10.0.12\System.Private.CoreLib.dll
+2026-10-29T01:16:48.8568646+00:00 Microsoft.Testing.Platform.Builder.TestApplication INFORMATION IsDynamicCodeSupported: True
+2026-10-29T01:16:48.8569039+00:00 Microsoft.Testing.Platform.Builder.TestApplication INFORMATION Test module: C:\projects\playerdbsync\PlayerDBSync\PlayerDBSync.Tests\bin\Debug\net10.0-windows\PlayerDBSync.Tests.dll
+2026-10-29T01:16:48.8569996+00:00 Microsoft.Testing.Platform.Builder.TestApplication INFORMATION Command line arguments: '--server --diagnostic --diagnostic-verbosity Information --diagnostic-output-directory C:\projects\playerdbsync\PlayerDBSync\PlayerDBSync.Tests\bin\Debug\net10.0-windows\Log --results-directory C:\projects\playerdbsync\PlayerDBSync\TestResults --client-port 53713'
+2026-10-29T01:16:48.8573969+00:00 Microsoft.Testing.Platform.Builder.TestApplication INFORMATION TESTINGPLATFORM_DEFAULT_HANG_TIMEOUT: ''
+2026-10-29T01:16:48.8665570+00:00 Microsoft.Testing.Platform.Hosts.TestHostBuilder INFORMATION Setting RegisterEnvironmentVariablesConfigurationSource: 'True'
+2026-10-29T01:16:48.8746057+00:00 Microsoft.Testing.Platform.Hosts.TestHostBuilder INFORMATION Setting PlatformExitProcessOnUnhandledException: 'False', config file: False environment variable: 
+2026-10-29T01:16:49.0047687+00:00 Microsoft.Testing.Platform.Requests.TestHostTestFrameworkInvoker INFORMATION Test framework UID: '30ea7c6e-dd24-4152-a360-1387158cd41d' Version: '3.2.2' DisplayName: 'xUnit.net v3 Microsoft.Testing.Platform test framework' Description: 'xUnit.net v3 Microsoft.Testing.Platform test framework'
+2026-10-29T01:16:49.0098296+00:00 xUnit.net INFORMATION xUnit.net v3 In-Process Runner v3.2.2+728c1dce01 (64-bit .NET 10.0.12)
+2026-10-29T01:16:49.0364077+00:00 xUnit.net INFORMATION   Discovering: PlayerDBSync.Tests
+2026-10-29T01:16:49.0811451+00:00 xUnit.net INFORMATION   Discovered:  PlayerDBSync.Tests
+2026-10-29T01:16:49.0940208+00:00 xUnit.net INFORMATION   Starting:    PlayerDBSync.Tests
+2026-10-29T01:16:49.3868842+00:00 xUnit.net INFORMATION   Finished:    PlayerDBSync.Tests (ID = '2c81ac073bd58aa6264374a2f83bd095a6c8437cbc9fdd1cb124205340300edb')
+2026-10-29T01:16:49.3893769+00:00 xUnit.net INFORMATION === TEST EXECUTION SUMMARY ===
+2026-10-29T01:16:49.3919955+00:00 xUnit.net INFORMATION    PlayerDBSync.Tests  Total: 107, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.294s

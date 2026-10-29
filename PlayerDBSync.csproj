@@ -10,6 +10,8 @@
     <ApplicationIcon>app.ico</ApplicationIcon>
     <!-- Releases pass -p:Version=<tag> (see release.yml); anything else is a dev build, labelled with its commit -->
     <DevBuild Condition="'$(Version)' == ''">true</DevBuild>
+    <!-- The tests are a project of their own, in a folder under this one -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);PlayerDBSync.Tests\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <!-- A dev build's version is its short commit, plus -dirty when built with uncommitted changes -->
@@ -30,6 +32,10 @@
 
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="4.153.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PlayerDBSync.Tests" />
   </ItemGroup>
 
   <ItemGroup>
