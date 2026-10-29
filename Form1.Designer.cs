@@ -1,4 +1,4 @@
-namespace PlayerDBSync
+﻿namespace PlayerDBSync
 {
     partial class Form1
     {
@@ -36,6 +36,7 @@ namespace PlayerDBSync
             navInfo = new NavTab();
             lblStatus = new Label();
             btnStart = new ThemedButton();
+            btnUpdateOrb = new WindowButton();
             btnMinimize = new WindowButton();
             btnExit = new WindowButton();
             pnlConfig = new BackdropPanel();
@@ -84,6 +85,7 @@ namespace PlayerDBSync
             lnkSite = new LinkLabel();
             lnkReleases = new LinkLabel();
             lnkReadme = new LinkLabel();
+            btnUpdate = new ThemedButton();
             cardUploads = new CardPanel();
             lblUploadsTitle = new Label();
             tblUploads = new TableLayoutPanel();
@@ -126,6 +128,7 @@ namespace PlayerDBSync
             pnlHeader.Controls.Add(navInfo);
             pnlHeader.Controls.Add(lblStatus);
             pnlHeader.Controls.Add(btnStart);
+            pnlHeader.Controls.Add(btnUpdateOrb);
             pnlHeader.Controls.Add(btnMinimize);
             pnlHeader.Controls.Add(btnExit);
             pnlHeader.Dock = DockStyle.Top;
@@ -193,6 +196,20 @@ namespace PlayerDBSync
             btnStart.TabIndex = 5;
             btnStart.Text = "Start";
             btnStart.Click += btnStart_Click;
+            //
+            // btnUpdateOrb
+            //
+            btnUpdateOrb.AccessibleName = "Update";
+            btnUpdateOrb.AccessibleRole = AccessibleRole.PushButton;
+            btnUpdateOrb.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnUpdateOrb.Cursor = Cursors.Hand;
+            btnUpdateOrb.Glyph = WindowGlyph.Update;
+            btnUpdateOrb.Location = new Point(446, 13);
+            btnUpdateOrb.Name = "btnUpdateOrb";
+            btnUpdateOrb.Size = new Size(34, 30);
+            btnUpdateOrb.TabIndex = 8;
+            btnUpdateOrb.Visible = false;
+            btnUpdateOrb.Click += btnUpdate_Click;
             //
             // btnMinimize
             //
@@ -623,6 +640,7 @@ namespace PlayerDBSync
             cardAbout.Controls.Add(lnkSite);
             cardAbout.Controls.Add(lnkReleases);
             cardAbout.Controls.Add(lnkReadme);
+            cardAbout.Controls.Add(btnUpdate);
             cardAbout.Location = new Point(16, 16);
             cardAbout.Name = "cardAbout";
             cardAbout.Size = new Size(648, 112);
@@ -689,6 +707,18 @@ namespace PlayerDBSync
             lnkReadme.TabStop = true;
             lnkReadme.Text = "How to use";
             lnkReadme.LinkClicked += lnkReadme_LinkClicked;
+            //
+            // btnUpdate
+            //
+            btnUpdate.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnUpdate.Kind = ButtonKind.Primary;
+            btnUpdate.Location = new Point(502, 68);
+            btnUpdate.Name = "btnUpdate";
+            btnUpdate.Size = new Size(130, 30);
+            btnUpdate.TabIndex = 6;
+            btnUpdate.Text = "Update";
+            btnUpdate.Visible = false;
+            btnUpdate.Click += btnUpdate_Click;
             //
             // cardUploads
             //
@@ -863,6 +893,7 @@ namespace PlayerDBSync
         private NavTab navInfo;
         private Label lblStatus;
         private ThemedButton btnStart;
+        private WindowButton btnUpdateOrb;
         private WindowButton btnMinimize;
         private WindowButton btnExit;
         private BackdropPanel pnlConfig;
@@ -911,6 +942,7 @@ namespace PlayerDBSync
         private LinkLabel lnkSite;
         private LinkLabel lnkReleases;
         private LinkLabel lnkReadme;
+        private ThemedButton btnUpdate;
         private CardPanel cardUploads;
         private Label lblUploadsTitle;
         private TableLayoutPanel tblUploads;

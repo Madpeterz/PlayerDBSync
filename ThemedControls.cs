@@ -134,11 +134,14 @@ namespace PlayerDBSync
     {
         Minimize,
         Close,
+
+        /// <summary>An up arrow in the site's green: a newer release is out.</summary>
+        Update,
     }
 
     /// <summary>
     ///  A window button in the header (the window has no title bar of its own), drawn as the site's icon buttons:
-    ///  a muted glyph, lit on hover; red for closing.
+    ///  a muted glyph, lit on hover; red for closing, green for updating.
     /// </summary>
     internal sealed class WindowButton : Control
     {
@@ -198,6 +201,16 @@ namespace PlayerDBSync
         {
             var g = e.Graphics;
             Theme.PaintBehind(this, g);
+            float scale = DeviceDpi / 96f;
+            float cx = Width / 2f;
+            float cy = Height / 2f;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+            if (_glyph == WindowGlyph.Update)
+            {
+                PaintUpdateOrb(g, scale, cx, cy);
+                return;
+            }
 
             var close = _glyph == WindowGlyph.Close;
             if (_hover || _pressed)
@@ -207,11 +220,7 @@ namespace PlayerDBSync
             }
 
             var colour = _hover || _pressed ? (close ? Color.White : Theme.Text) : Theme.Muted;
-            float scale = DeviceDpi / 96f;
             float half = 5 * scale;
-            float cx = Width / 2f;
-            float cy = Height / 2f;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             using var pen = new Pen(colour, 1.5f * scale);
             if (close)
             {
@@ -222,6 +231,36 @@ namespace PlayerDBSync
             {
                 g.DrawLine(pen, cx - half, cy, cx + half, cy);
             }
+        }
+
+        /// <summary>A green orb, lit from its top left and brighter on hover, with a dark up arrow in it.</summary>
+        private void PaintUpdateOrb(Graphics g, float scale, float cx, float cy)
+        {
+            float r = 10 * scale;
+            var orb = new RectangleF(cx - r, cy - r, 2 * r, 2 * r);
+            var green = _pressed ? Theme.Mix(Theme.Good, Color.White, 0.3f) : _hover ? Theme.Mix(Theme.Good, Color.White, 0.15f) : Theme.Good;
+            using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+            {
+                path.AddEllipse(orb);
+                using var shading = new System.Drawing.Drawing2D.PathGradientBrush(path)
+                {
+                    CenterPoint = new PointF(cx - r * 0.35f, cy - r * 0.35f),
+                    CenterColor = Theme.Mix(green, Color.White, 0.35f),
+                    SurroundColors = [Theme.Mix(green, Color.Black, 0.15f)],
+                };
+                g.FillPath(shading, path);
+            }
+
+            float half = 5 * scale;
+            float head = half * 0.8f;
+            using var pen = new Pen(Theme.Background, 2f * scale)
+            {
+                StartCap = System.Drawing.Drawing2D.LineCap.Round,
+                EndCap = System.Drawing.Drawing2D.LineCap.Round,
+                LineJoin = System.Drawing.Drawing2D.LineJoin.Round,
+            };
+            g.DrawLine(pen, cx, cy + half, cx, cy - half);
+            g.DrawLines(pen, [new PointF(cx - head, cy - half + head), new PointF(cx, cy - half), new PointF(cx + head, cy - half + head)]);
         }
     }
 

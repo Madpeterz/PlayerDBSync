@@ -8,7 +8,25 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- The site's emblem (its public/images/emblem.webp), for the exe; the window loads it from the embedded copy below -->
     <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- Releases pass -p:Version=<tag> (see release.yml); anything else is a dev build, labelled with its commit -->
+    <DevBuild Condition="'$(Version)' == ''">true</DevBuild>
   </PropertyGroup>
+
+  <!-- A dev build's version is its short commit, plus -dirty when built with uncommitted changes -->
+  <Target Name="SetDevVersion" BeforeTargets="GetAssemblyVersion" Condition="'$(DevBuild)' == 'true'">
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="DevCommit" />
+      <Output TaskParameter="ExitCode" PropertyName="DevCommitExitCode" />
+    </Exec>
+    <Exec Command="git status --porcelain" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low" Condition="'$(DevCommitExitCode)' == '0'">
+      <Output TaskParameter="ConsoleOutput" PropertyName="DevChanges" />
+    </Exec>
+    <PropertyGroup>
+      <InformationalVersion Condition="'$(DevCommitExitCode)' == '0'">$(DevCommit)</InformationalVersion>
+      <InformationalVersion Condition="'$(DevCommitExitCode)' == '0' And '$(DevChanges)' != ''">$(DevCommit)-dirty</InformationalVersion>
+      <InformationalVersion Condition="'$(DevCommitExitCode)' != '0'">dev</InformationalVersion>
+    </PropertyGroup>
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="4.153.1" />

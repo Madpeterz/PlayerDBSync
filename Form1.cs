@@ -17,6 +17,9 @@ namespace PlayerDBSync
         private static readonly TimeSpan IgnoreListInterval = TimeSpan.FromMinutes(15);
         private static readonly TimeSpan UploadInterval = TimeSpan.FromSeconds(30);
 
+        // How often GitHub is asked for a newer release, while the app runs.
+        private static readonly TimeSpan UpdateCheckInterval = TimeSpan.FromHours(6);
+
         // Steps in a schedule row's bar; enough that a 30 min backoff still moves every few seconds.
         private const int BarSteps = 1000;
 
@@ -54,6 +57,9 @@ namespace PlayerDBSync
 
         // Bumped on each version lookup, so a slow earlier one can't overwrite a newer result.
         private int _versionLookup;
+
+        // The newer release btnUpdate offers, once one is found.
+        private string? _updateTag;
 
         // Snapshot of the server and credentials taken when sync starts, so edits to the boxes don't affect a running sync.
         private string _baseUrl = "";
@@ -220,6 +226,19 @@ namespace PlayerDBSync
                 async ct => (await _demoOcrUploader.UploadNextAsync(_baseUrl + DemoOcrUploader.EndpointPath, _credentials, ct)).Error);
 
             ShowInfo();
+
+            // A dev build always has the update orb, leading to the latest release; a release only once a newer one is out.
+            if (!UpdateCheck.IsRelease(AppVersion))
+            {
+                toolTip.SetToolTip(btnUpdateOrb, $"Dev build ({AppVersion}): click for the latest release");
+                btnUpdateOrb.Visible = true;
+                LayoutHeader();
+            }
+
+            var updateTimer = new System.Windows.Forms.Timer { Interval = (int)UpdateCheckInterval.TotalMilliseconds };
+            updateTimer.Tick += async (_, _) => await CheckForUpdateAsync();
+            updateTimer.Start();
+            Disposed += (_, _) => updateTimer.Dispose();
         }
 
         private void Form1_Load(object? sender, EventArgs e)
@@ -233,7 +252,7 @@ namespace PlayerDBSync
             chkDemoOcr.Checked = _settings.DemoOcrScreenshots;
         }
 
-        private void Form1_Shown(object? sender, EventArgs e)
+        private async void Form1_Shown(object? sender, EventArgs e)
         {
             // Resume syncing automatically when a previous run left complete settings;
             // otherwise wait for the user to fill them in and press Start.
@@ -241,6 +260,7 @@ namespace PlayerDBSync
             {
                 btnStart_Click(this, EventArgs.Empty);
             }
+            await CheckForUpdateAsync();
         }
 
         private async void txtAddonFolder_TextChanged(object? sender, EventArgs e)
@@ -484,7 +504,9 @@ namespace PlayerDBSync
                 tab.SetBounds(x, 8, tab.GetPreferredSize(Size.Empty).Width, pnlHeader.Height - 16);
                 x = tab.Right;
             }
-            lblStatus.Location = new Point(btnStart.Left - 12 - lblStatus.Width, (pnlHeader.Height - lblStatus.Height) / 2);
+            // Left of the update orb, while there is one.
+            int right = btnUpdateOrb.Visible ? btnUpdateOrb.Left : btnStart.Left;
+            lblStatus.Location = new Point(right - 12 - lblStatus.Width, (pnlHeader.Height - lblStatus.Height) / 2);
         }
 
         private void navTab_Click(object? sender, EventArgs e) => ShowPage(_pages.First(p => p.Tab == sender).Page);
@@ -498,13 +520,17 @@ namespace PlayerDBSync
             }
         }
 
-        private const string RepositoryUrl = "https://github.com/Madpeterz/PlayerDBSync";
+        private const string RepositoryUrl = $"https://github.com/{UpdateCheck.Repository}";
+
+        // A release's version is the tag it was built from, a dev build's its commit (see the csproj); ProductVersion adds "+<commit>".
+        private static string AppVersion => Application.ProductVersion.Split('+')[0];
+
+        private static string ShownVersion(string version) => UpdateCheck.IsRelease(version) ? $"v{version.TrimStart('v', 'V')}" : version;
 
         /// <summary>The Info page: the version, what is synced where and how often, and the folders the app keeps things in.</summary>
         private void ShowInfo()
         {
-            // A release's version is the tag it was built from; ProductVersion adds "+<commit>".
-            lblVersion.Text = $"v{Application.ProductVersion.Split('+')[0]}";
+            lblVersion.Text = ShownVersion(AppVersion);
             lblVersion.Left = lblAboutTitle.Right + 4;
             int x = lnkSite.Left;
             foreach (var link in new[] { lnkSite, lnkReleases, lnkReadme })
@@ -590,6 +616,31 @@ namespace PlayerDBSync
         }
 
         private void lnkReleases_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e) => OpenUrl($"{RepositoryUrl}/releases/latest");
+
+        /// <summary>
+        ///  Shows btnUpdate, and the orb by Start/Stop, when GitHub's latest release is newer than this one (never for a dev build).
+        /// </summary>
+        private async Task CheckForUpdateAsync()
+        {
+            var tag = await UpdateCheck.NewerReleaseAsync(AppVersion);
+            if (tag == null || tag == _updateTag)
+            {
+                return;
+            }
+            _updateTag = tag;
+            btnUpdate.Text = $"Update to {ShownVersion(tag)}";
+            btnUpdate.Width = TextRenderer.MeasureText(btnUpdate.Text, btnUpdate.Font).Width + 32;
+            btnUpdate.Left = cardAbout.ClientSize.Width - 16 - btnUpdate.Width;
+            btnUpdate.Visible = true;
+            toolTip.SetToolTip(btnUpdateOrb, $"{ShownVersion(tag)} is out: click to download it");
+            btnUpdateOrb.Visible = true;
+            LayoutHeader();
+            Log($"{ShownVersion(tag)} is out (this is {ShownVersion(AppVersion)}): Info > {btnUpdate.Text} to download it");
+        }
+
+        private void btnUpdate_Click(object? sender, EventArgs e) => OpenUrl(_updateTag == null
+            ? $"{RepositoryUrl}/releases/latest"
+            : $"{RepositoryUrl}/releases/tag/{Uri.EscapeDataString(_updateTag)}");
 
         private void lnkReadme_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e) => OpenUrl($"{RepositoryUrl}#readme");
 
