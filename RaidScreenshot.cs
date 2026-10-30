@@ -89,8 +89,8 @@ namespace PlayerDBSync
             return FileStamp(DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime);
         }
 
-        /// <summary>Same format as the addon's file names: "2026-10-17_19-07-20".</summary>
-        public static string FileStamp(DateTime time) => time.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
+        /// <summary>Same format as the addon's file names: "2026-10-17_19-07-20". Always UTC, whatever kind of time is given.</summary>
+        public static string FileStamp(DateTime time) => time.ToUniversalTime().ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
 
         /// <summary>
         ///  "&lt;baseName&gt;-N-&lt;reason&gt;.webp" in <see cref="OutputFolder"/>, or "&lt;baseName&gt;-N.webp" with no reason.

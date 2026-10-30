@@ -33,6 +33,15 @@ namespace PlayerDBSync.Tests
         }
 
         [Fact]
+        public void FileStampsAreUtcWhateverTheKindOfTime()
+        {
+            var utc = new DateTime(2026, 10, 17, 19, 7, 20, DateTimeKind.Utc);
+
+            Assert.Equal("2026-10-17_19-07-20", RaidScreenshot.FileStamp(utc));
+            Assert.Equal("2026-10-17_19-07-20", RaidScreenshot.FileStamp(utc.ToLocalTime()));
+        }
+
+        [Fact]
         public void TheAppNamesImagesAsTheSiteTakesThem()
         {
             Assert.Equal("2026-10-17_19-07-20", RaidStart);
