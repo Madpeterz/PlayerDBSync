@@ -40,17 +40,18 @@ namespace PlayerDBSync.Tests
 
         private static string Controller(string path) => Php($"{Api}{Routes()[path]}.php");
 
-        /// <summary>The app's source folder, found from the test's build output.</summary>
+        /// <summary>The app's shared source folder (PlayerDBSync.Core), found from the test's build output.</summary>
         private static string AppSource()
         {
             for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
             {
-                if (File.Exists(Path.Combine(dir.FullName, "PlayerDBSync.csproj")))
+                var core = Path.Combine(dir.FullName, "PlayerDBSync.Core");
+                if (File.Exists(Path.Combine(core, "PlayerDBSync.Core.csproj")))
                 {
-                    return dir.FullName;
+                    return core;
                 }
             }
-            throw new InvalidOperationException("PlayerDBSync.csproj not found above " + AppContext.BaseDirectory);
+            throw new InvalidOperationException("PlayerDBSync.Core not found above " + AppContext.BaseDirectory);
         }
 
         [Fact]

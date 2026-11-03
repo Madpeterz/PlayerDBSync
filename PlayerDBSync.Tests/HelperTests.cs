@@ -57,7 +57,7 @@ namespace PlayerDBSync.Tests
         [Fact]
         public void LocationOfReadsTheSavedFileName()
         {
-            Assert.Equal(new DemoLocation(16, 10, 20, 'S', 9, 41, 2, 'W'), DemoOcr.LocationOf(@"C:\x\2026-10-23_13-08-00_16-10-20S_9-41-2W.webp"));
+            Assert.Equal(new DemoLocation(16, 10, 20, 'S', 9, 41, 2, 'W'), DemoOcr.LocationOf(Path.Combine("x", "2026-10-23_13-08-00_16-10-20S_9-41-2W.webp")));
             Assert.Null(DemoOcr.LocationOf("2026-10-23_13-08-00.webp"));
             Assert.Null(DemoOcr.LocationOf("holiday.webp"));
         }

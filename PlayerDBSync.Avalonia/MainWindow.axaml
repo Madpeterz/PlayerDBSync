@@ -1,0 +1,135 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PlayerDBSync.MainWindow"
+        Title="PlayerDB Sync"
+        Icon="avares://PlayerDBSync.Avalonia/Assets/app.ico"
+        Width="680" Height="600" MinWidth="600" MinHeight="480">
+
+  <Grid RowDefinitions="Auto,*">
+
+    <!-- The site's background: a picture under a nearly opaque veil, one fading into the next. -->
+    <Image x:Name="backdropA" Grid.RowSpan="2" Stretch="UniformToFill" Opacity="0" IsHitTestVisible="False" />
+    <Image x:Name="backdropB" Grid.RowSpan="2" Stretch="UniformToFill" Opacity="0" IsHitTestVisible="False" />
+
+    <!-- Header -->
+    <Border Grid.Row="0" Background="#e614171c" BorderBrush="{StaticResource PdbBorder}" BorderThickness="0,0,0,1" Padding="16,0">
+      <DockPanel Height="56">
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+          <TextBlock x:Name="lblStatus" Classes="muted" Text="Stopped" VerticalAlignment="Center" />
+          <Button x:Name="btnUpdateOrb" Classes="primary" Content="↑" IsVisible="False" Padding="10,4" />
+          <Button x:Name="btnStart" Classes="primary" Content="Start" MinWidth="84" HorizontalContentAlignment="Center" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <TextBlock x:Name="lblBrand" Text="PlayerDB Sync" FontSize="18" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,16,0" />
+          <Button x:Name="tabConfig" Classes="tab active" Content="Config" VerticalAlignment="Stretch" />
+          <Button x:Name="tabRunning" Classes="tab" Content="Running" VerticalAlignment="Stretch" />
+          <Button x:Name="tabInfo" Classes="tab" Content="Info" VerticalAlignment="Stretch" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- Config -->
+    <ScrollViewer x:Name="pageConfig" Grid.Row="1">
+      <StackPanel Margin="16">
+        <Border Classes="card">
+          <StackPanel>
+            <TextBlock Classes="heading" Text="Addons" />
+            <Grid ColumnDefinitions="130,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+              <TextBlock Classes="muted" Text="PlayerDB addon" VerticalAlignment="Center" />
+              <TextBox x:Name="txtFolder" Grid.Column="1" />
+              <Button x:Name="btnBrowse" Grid.Column="2" Content="Browse…" />
+              <TextBlock x:Name="lblPlayerVersion" Grid.Row="1" Grid.Column="1" Classes="good" />
+
+              <TextBlock Grid.Row="2" Classes="muted" Text="RaidsDB addon" VerticalAlignment="Center" />
+              <TextBox x:Name="txtRaidFolder" Grid.Row="2" Grid.Column="1" />
+              <Button x:Name="btnBrowseRaid" Grid.Row="2" Grid.Column="2" Content="Browse…" />
+              <TextBlock x:Name="lblRaidVersion" Grid.Row="3" Grid.Column="1" Classes="good" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel>
+            <TextBlock Classes="heading" Text="Server" />
+            <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="10">
+              <TextBlock Classes="muted" Text="Server URL" VerticalAlignment="Center" />
+              <TextBox x:Name="txtUrl" Grid.Column="1" />
+              <TextBlock Grid.Row="1" Classes="muted" Text="User ID" VerticalAlignment="Center" />
+              <TextBox x:Name="txtUserId" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Left" Width="160" />
+              <TextBlock Grid.Row="2" Classes="muted" Text="API key" VerticalAlignment="Center" />
+              <TextBox x:Name="txtApiKey" Grid.Row="2" Grid.Column="1" PasswordChar="●" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="heading" Text="Screenshots" />
+            <Grid ColumnDefinitions="*,Auto">
+              <CheckBox x:Name="chkRaid" Content="Save screenshot on RaidsDB request" />
+              <Button x:Name="btnOpenShots" Grid.Column="1" Content="Open folder" />
+            </Grid>
+            <CheckBox x:Name="chkDemo" Content="Upload screenshot on PlayerDB DemoOCR request" />
+            <TextBlock x:Name="lblCaptureNote" Classes="muted" TextWrapping="Wrap" IsVisible="False" />
+          </StackPanel>
+        </Border>
+
+        <Button x:Name="btnClear" Classes="danger" Content="Clear addon data…" HorizontalAlignment="Left" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- Running -->
+    <Grid x:Name="pageRunning" Grid.Row="1" Margin="16" RowDefinitions="Auto,*" IsVisible="False">
+      <Border Classes="card">
+        <StackPanel>
+          <TextBlock Classes="heading" Text="Schedule" />
+          <TextBlock x:Name="lblNotSyncing" Classes="muted" Text="Not syncing. Fill in Config, then press Start." />
+          <Grid x:Name="gridSchedule" ColumnDefinitions="Auto,*,210" />
+        </StackPanel>
+      </Border>
+      <Border Grid.Row="1" Classes="card" Margin="0">
+        <Grid RowDefinitions="Auto,*">
+          <TextBlock Classes="heading" Text="Log" />
+          <TextBox x:Name="txtLog" Grid.Row="1" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                   Background="#1c2027" BorderThickness="0"
+                   FontFamily="Cascadia Mono,Consolas,DejaVu Sans Mono,monospace" FontSize="12" />
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- Info -->
+    <ScrollViewer x:Name="pageInfo" Grid.Row="1" IsVisible="False">
+      <StackPanel Margin="16">
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="PlayerDB Sync" FontSize="15" FontWeight="SemiBold" />
+              <TextBlock x:Name="lblVersion" Classes="muted" VerticalAlignment="Bottom" />
+            </StackPanel>
+            <TextBlock Text="Uploads what the PlayerDB and RaidsDB addons collect to the PlayerDB site." TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Orientation="Horizontal" Spacing="20">
+                <Button x:Name="lnkSite" Classes="link" Content="Open the site" />
+                <Button x:Name="lnkReleases" Classes="link" Content="Check for updates" />
+                <Button x:Name="lnkReadme" Classes="link" Content="How to use" />
+              </StackPanel>
+              <Button x:Name="btnUpdate" Grid.Column="1" Classes="primary" IsVisible="False" />
+            </Grid>
+          </StackPanel>
+        </Border>
+        <Border Classes="card">
+          <StackPanel>
+            <TextBlock Classes="heading" Text="What it syncs" />
+            <Grid x:Name="gridUploads" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="24" />
+          </StackPanel>
+        </Border>
+        <Border Classes="card">
+          <StackPanel>
+            <TextBlock Classes="heading" Text="Where it keeps things" />
+            <Grid x:Name="gridFiles" ColumnDefinitions="Auto,*" ColumnSpacing="24" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</Window>

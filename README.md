@@ -1,6 +1,6 @@
 # PlayerDB Sync
 
-A small Windows app that uploads the data collected by the **PlayerDB** and **RaidsDB** ArcheAge Classic addons to the PlayerDB server.
+A small app for Windows and Linux that uploads the data collected by the **PlayerDB** and **RaidsDB** ArcheAge Classic addons to the PlayerDB server.
 
 It watches the addons' data folders, and every 30 to 45 seconds uploads any files that have changed:
 
@@ -17,7 +17,7 @@ You can sync either addon; leave the other empty. Houses and regrades used to co
 
 ## Requirements
 
-- Windows 10 or 11 (64-bit). Nothing else to install; the .NET runtime is bundled.
+- **Windows** 10 or 11 (64-bit), or **Linux** (64-bit, with X11 or XWayland; see [Linux](#linux)). Nothing else to install for the app itself; the .NET runtime is bundled.
 - The PlayerDB or RaidsDB addon (or both) installed in ArcheAge Classic.
 - Your PlayerDB **user ID** and **API key**.
 
@@ -41,6 +41,7 @@ You can sync either addon; leave the other empty. Houses and regrades used to co
 
    - `C:\Users\<you>\Documents\AAClassic\Addon\`
    - `C:\AAClassic\Documents\Addon\`
+   - on Linux, inside the game's Wine prefix, e.g. `~/.wine/drive_c/AAClassic/Documents/Addon/`
 
    If you pick the `Players`, `Houses`, `Regrades`, `Inventory` or `Raids` folder by mistake, the app selects the addon folder above it for you.
 
@@ -51,11 +52,42 @@ You can sync either addon; leave the other empty. Houses and regrades used to co
    - **Schedule** has a row for everything it does while syncing (each addon folder, the raid item ignore list, the screenshot uploads). Each row's bar starts full and empties until that's done again; a stretch of it sweeps along while it's being done. Beside it is when it was last checked, or, in red with a red bar, that it's failing and when it next tries.
    - **Log** shows what it uploads, and any errors.
 
-   The window has no Windows title bar: drag its header to move it, drag its edges to resize it, and use **–** and **×** at the top right to minimise it or exit (which stops syncing). While it runs it also has an icon in the tray (by the clock); minimised, it's only there, off the taskbar, and keeps syncing. Click the icon to bring the window back, or right-click it to show the window, start or stop syncing, or exit. Hovering over it says whether it's syncing.
+   On Windows the window has no title bar: drag its header to move it, drag its edges to resize it, and use **–** and **×** at the top right to minimise it or exit (which stops syncing). While it runs it also has an icon in the tray (by the clock); minimised, it's only there, off the taskbar, and keeps syncing. Click the icon to bring the window back, or right-click it to show the window, start or stop syncing, or exit. Hovering over it says whether it's syncing. (The Linux window has its desktop's own title bar, and a tray icon too where the desktop has one.)
 
    The **Info** tab has the app's version, links to the site and to new releases, what is synced where and how often, and the folders the app keeps its settings and screenshots in.
 
 Next time you open the app, it starts syncing straight away with the saved settings. Click **Stop** to change them.
+
+## Linux
+
+The game, ArcheAge Classic, is a Windows game, so on Linux it runs under Wine or Proton, and the addons' data folders are inside its Wine prefix. The Linux app is the same app with a window of its own (built with Avalonia), reading those folders as they are.
+
+1. **Download** `PlayerDBSync-linux-x64.tar.gz` from the [latest release](https://github.com/Madpeterz/PlayerDBSync/releases/latest), unpack it anywhere (`tar xzf PlayerDBSync-linux-x64.tar.gz`) and run `./PlayerDBSync`.
+2. **Set the addon folders** as in [Setup](#setup), with **Browse…** or by typing the path into the Wine prefix.
+3. If you want **screenshots** (see below), install the tools it uses.
+
+What the window needs is on nearly every desktop already: the X11 client libraries, `libSM`/`libICE`, fontconfig and freetype. On a minimal install the app says it can't start and which library is missing; on Debian/Ubuntu: `sudo apt install libx11-6 libxcursor1 libxrandr2 libxi6 libsm6 libice6 libfontconfig1 libfreetype6`.
+
+### Screenshots on Linux
+
+The Windows app asks Windows for the game window's picture. Linux has no one way to do that, so the app uses small tools, and the game has to be an **X11 window** (a native X11 session, or XWayland on a Wayland one, which Wine and Proton use by default):
+
+| Needs | For | Debian/Ubuntu | Arch | Fedora |
+|-------|-----|---------------|------|--------|
+| `xdotool` | finding the game window | `sudo apt install xdotool` | `sudo pacman -S xdotool` | `sudo dnf install xdotool` |
+| `maim` **or** ImageMagick's `import` | taking its picture | `sudo apt install maim` (or `imagemagick`) | `sudo pacman -S maim` | `sudo dnf install maim` |
+
+- The window is found by its window class, `archeage` (Wine names it after the program). If yours has another name, set the `PLAYERDBSYNC_WINDOW_CLASS` environment variable to it (a regular expression; `xprop WM_CLASS` and a click on the game's window shows it).
+- The picture is the window's own contents, so other windows in front don't spoil it on a desktop with a compositor (nearly all have one). Without a compositor the game should be in front.
+- A **minimised** window can't be captured; the request is kept and retried, as on Windows. A capture that comes out **black** isn't saved: use windowed or borderless mode, not exclusive full screen.
+- A **pure Wayland** window (not XWayland) can't be captured by these tools.
+- The screenshots are saved to `/tmp/PlayerDBSync/Screenshots`, and **Open folder** opens it with `xdg-open`.
+
+### What's different from Windows
+
+- Settings are in `~/.config/PlayerDBSync/settings.json`. Linux has no equivalent of Windows' per-user encryption that every desktop shares, so the API key there is only encoded, not encrypted: the file (and its folder) are readable by your user alone (mode 600/700), and that is what protects it. Don't copy the file elsewhere.
+- **Clear addon data…** moves files to your desktop's Trash (using `gio trash`, or the Trash folder in `~/.local/share/Trash` without it).
+- Minimising works as your desktop does it, rather than leaving only a tray icon.
 
 ## How it works
 
@@ -102,7 +134,7 @@ Tick **Save screenshot on RaidsDB request** to let the RaidsDB addon ask for scr
 
 When it finds one, it captures the `archeage.exe` window and deletes the request once the screenshot is saved. If the capture fails (for example the game is minimised), the request is kept and retried every 2 seconds. A request that's only partly written (no closing `}` yet) is read again on the next check.
 
-Screenshots are saved to `%TEMP%\PlayerDBSync\Screenshots`. The **Open folder** button next to the checkbox (or the folder's link on the **Info** tab) opens it in Explorer.
+Screenshots are saved to `%TEMP%\PlayerDBSync\Screenshots` (`/tmp/PlayerDBSync/Screenshots` on Linux). The **Open folder** button next to the checkbox (or the folder's link on the **Info** tab) opens it in Explorer.
 
 ### File names
 
@@ -155,7 +187,9 @@ Because the folders have moved, the first sync after upgrading uploads every hou
 
 ## Settings
 
-Settings are saved in `%AppData%\PlayerDBSync\settings.json`. The API key is encrypted so only your Windows account can read it. To start fresh, close the app and delete that file.
+Settings are saved in `%AppData%\PlayerDBSync\settings.json` (`~/.config/PlayerDBSync/settings.json` on Linux, see [Linux](#linux)). On Windows the API key is encrypted so only your Windows account can read it. To start fresh, close the app and delete that file.
+
+To keep the settings somewhere else (to try the app without touching your real ones, say), set the `PLAYERDBSYNC_SETTINGS_DIR` environment variable to a folder.
 
 ## Troubleshooting
 
@@ -171,21 +205,41 @@ Settings are saved in `%AppData%\PlayerDBSync\settings.json`. The API key is enc
 | *Demo OCR requested but location.dat isn't up to date yet* | The addon isn't writing its location. Check that the DemoOCR feature is enabled in the PlayerDB addon and the game isn't paused or loading. |
 | *Demo OCR: needs the PlayerDB addon's Demos folder* | Update the PlayerDB addon, then play with it enabled until it creates `Demos`, and click **Stop** and **Start**. |
 | *Server rejected … not named \<raid start\>-\<n\>[-\<reason\>].webp* | A file in the screenshot folder wasn't saved by the app. Remove it from `%TEMP%\PlayerDBSync\Screenshots`. |
+| *… xdotool isn't installed* / *no screenshot tool is installed* (Linux) | Install `xdotool` and `maim` (or ImageMagick), see [Screenshots on Linux](#screenshots-on-linux). |
+| *… no game window found* (Linux) | The game isn't running, or its window isn't an X11 one, or its class isn't `archeage`: see `PLAYERDBSYNC_WINDOW_CLASS` above. |
+| *… there is no X11 display (DISPLAY isn't set)* (Linux) | Start the app from your desktop session (not over plain SSH), and run the game through X11 or XWayland. |
+| *PlayerDB Sync couldn't start: Unable to load shared library …* (Linux) | A library the window needs is missing; the message gives the `apt install` line for the usual ones. |
 
 ## Building from source
 
-Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download).
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download), on Windows or Linux.
+
+The code is in four projects:
+
+| Project | What it is |
+|---------|------------|
+| `PlayerDBSync.Core` | Everything the app does with no window: uploads, the schedule (`SyncEngine`), screenshots and their capture for each system. |
+| `PlayerDBSync.csproj` (this folder) | The Windows app: WinForms on top of the core. |
+| `PlayerDBSync.Avalonia` | The Linux app (it runs on Windows too): Avalonia on top of the core. |
+| `PlayerDBSync.Tests` | The tests, which run on both systems. |
 
 ```sh
 dotnet build
+dotnet test PlayerDBSync.Tests
 ```
 
-To build the same single-file exe as the releases:
+To run the Linux app from source: `dotnet run --project PlayerDBSync.Avalonia`.
+
+To build the same single-file builds as the releases:
 
 ```sh
+# Windows
 dotnet publish PlayerDBSync.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
+
+# Linux
+dotnet publish PlayerDBSync.Avalonia/PlayerDBSync.Avalonia.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
 ```
 
 ### Releasing
 
-Push a version tag (e.g. `1.2.0`, or `1.2.0-beta` for a pre-release). The GitHub Actions workflow builds `PlayerDBSync.exe` and publishes it as a release.
+Push a version tag (e.g. `1.2.0`, or `1.2.0-beta` for a pre-release). The GitHub Actions workflow builds `PlayerDBSync.exe` (Windows) and `PlayerDBSync-linux-x64.tar.gz` (Linux) and publishes them as a release. Every push and pull request is built and tested on both systems.

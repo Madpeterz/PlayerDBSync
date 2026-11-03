@@ -1,4 +1,6 @@
 <Solution>
+  <Project Path="PlayerDBSync.Core/PlayerDBSync.Core.csproj" />
   <Project Path="PlayerDBSync.csproj" />
+  <Project Path="PlayerDBSync.Avalonia/PlayerDBSync.Avalonia.csproj" />
   <Project Path="PlayerDBSync.Tests/PlayerDBSync.Tests.csproj" />
 </Solution>

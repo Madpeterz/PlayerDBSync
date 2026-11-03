@@ -1,0 +1,128 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="PlayerDBSync.App"
+             RequestedThemeVariant="Dark">
+
+  <!-- The PlayerDB site's look (its public/style.css), as the Windows app has it: dark, cards a shade lighter than the page, a blue accent. -->
+  <Application.Resources>
+    <SolidColorBrush x:Key="PdbBackground">#14171c</SolidColorBrush>
+    <SolidColorBrush x:Key="PdbSurface">#1c2027</SolidColorBrush>
+    <SolidColorBrush x:Key="PdbText">#e6e8ec</SolidColorBrush>
+    <SolidColorBrush x:Key="PdbMuted">#9aa1ad</SolidColorBrush>
+    <SolidColorBrush x:Key="PdbBorder">#2d333d</SolidColorBrush>
+    <SolidColorBrush x:Key="PdbAccent">#79a6f2</SolidColorBrush>
+    <SolidColorBrush x:Key="PdbHover">#232935</SolidColorBrush>
+    <SolidColorBrush x:Key="PdbGood">#5cc98a</SolidColorBrush>
+    <SolidColorBrush x:Key="PdbBad">#f06a5f</SolidColorBrush>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+
+    <Style Selector="Window">
+      <Setter Property="Background" Value="{StaticResource PdbBackground}" />
+      <Setter Property="Foreground" Value="{StaticResource PdbText}" />
+    </Style>
+
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="{StaticResource PdbSurface}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PdbBorder}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="16" />
+      <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{StaticResource PdbMuted}" />
+    </Style>
+    <Style Selector="TextBlock.heading">
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+    <Style Selector="TextBlock.good">
+      <Setter Property="Foreground" Value="{StaticResource PdbGood}" />
+    </Style>
+    <Style Selector="TextBlock.mono">
+      <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,DejaVu Sans Mono,monospace" />
+      <Setter Property="Foreground" Value="{StaticResource PdbMuted}" />
+    </Style>
+
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="{StaticResource PdbBackground}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PdbBorder}" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="MinHeight" Value="32" />
+    </Style>
+
+    <!-- Fluent draws a button's colours on its template's presenter, so they're set there too (or hover would put them back). -->
+    <Style Selector="Button">
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Background" Value="{StaticResource PdbHover}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PdbBorder}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="14,6" />
+    </Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#2d333d" />
+    </Style>
+
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="{StaticResource PdbAccent}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PdbAccent}" />
+      <Setter Property="Foreground" Value="#0b1220" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#92b7f5" />
+      <Setter Property="Foreground" Value="#0b1220" />
+    </Style>
+
+    <Style Selector="Button.danger">
+      <Setter Property="Foreground" Value="{StaticResource PdbBad}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PdbBad}" />
+    </Style>
+
+    <Style Selector="Button.tab">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0,0,0,2" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Foreground" Value="{StaticResource PdbMuted}" />
+      <Setter Property="Padding" Value="12,8" />
+    </Style>
+    <Style Selector="Button.tab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource PdbText}" />
+    </Style>
+    <Style Selector="Button.tab.active">
+      <Setter Property="Foreground" Value="{StaticResource PdbText}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PdbAccent}" />
+    </Style>
+    <Style Selector="Button.tab.active /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="BorderBrush" Value="{StaticResource PdbAccent}" />
+    </Style>
+
+    <Style Selector="Button.link">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="{StaticResource PdbAccent}" />
+      <Setter Property="Padding" Value="0,2" />
+    </Style>
+    <Style Selector="Button.link:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="TextBlock.TextDecorations" Value="Underline" />
+    </Style>
+
+    <Style Selector="ProgressBar">
+      <Setter Property="Foreground" Value="{StaticResource PdbAccent}" />
+      <Setter Property="Background" Value="{StaticResource PdbHover}" />
+      <Setter Property="Height" Value="8" />
+      <Setter Property="MinHeight" Value="8" />
+    </Style>
+    <Style Selector="ProgressBar.failing">
+      <Setter Property="Foreground" Value="{StaticResource PdbBad}" />
+    </Style>
+  </Application.Styles>
+</Application>

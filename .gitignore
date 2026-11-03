@@ -1,4 +1,6 @@
 /.vs
-/bin
-/obj
+bin/
+obj/
 /publish
+/PlayerDBSync.Tests/bin
+/PlayerDBSync.Tests/bin
