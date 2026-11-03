@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>PlayerDBSync</RootNamespace>
+    <AssemblyName>PlayerDBSync.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The same version Avalonia.Skia uses, so the app has one copy of Skia whichever UI it runs -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
+    <!-- Windows' DPAPI, for the API key; only ever called on Windows -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PlayerDBSync" />
+    <InternalsVisibleTo Include="PlayerDBSync.Avalonia" />
+    <InternalsVisibleTo Include="PlayerDBSync.Tests" />
+  </ItemGroup>
+
+</Project>
