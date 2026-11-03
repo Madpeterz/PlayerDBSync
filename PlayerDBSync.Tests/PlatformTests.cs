@@ -110,6 +110,22 @@ namespace PlayerDBSync.Tests
             Assert.Contains(expected, error);
         }
 
+        [Theory]
+        [InlineData(0, "minimised")]
+        [InlineData(1, "isn't running")]
+        public void UsesPgrepToTellIfTheGameIsRunning(int pgrepExit, string expected)
+        {
+            var runner = new FakeRunner((program, _) => program == "pgrep"
+                ? new ProcessResult(pgrepExit, pgrepExit == 0 ? "1234"u8.ToArray() : [], "")
+                : new ProcessResult(1, [], ""));
+
+            var (image, error) = new X11GameCapture(runner, environment: Env).Capture();
+
+            Assert.Null(image);
+            Assert.Contains(expected, error);
+            Assert.Contains("pgrep -f -i -- archeage", runner.Calls);
+        }
+
         [Fact]
         public void SaysWhatIsMissing()
         {

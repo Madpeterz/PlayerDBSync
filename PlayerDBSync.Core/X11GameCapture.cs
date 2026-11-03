@@ -33,7 +33,7 @@ namespace PlayerDBSync
         public X11GameCapture(IProcessRunner runner, Func<bool>? gameRunning = null, Func<string, string?>? environment = null)
         {
             _runner = runner;
-            _gameRunning = gameRunning ?? IsGameProcessRunning;
+            _gameRunning = gameRunning ?? (() => IsGameRunning(runner));
             _environment = environment ?? Environment.GetEnvironmentVariable;
         }
 
@@ -54,7 +54,7 @@ namespace PlayerDBSync
                 // A minimised window is unmapped, so it's not among the visible ones.
                 return (null, _gameRunning()
                     ? "the game window is minimised (or hasn't opened yet)"
-                    : "archeage.exe isn't running (no game window found)");
+                    : "the game isn't running (no game window found)");
             }
 
             var (image, error) = Grab(Biggest(windows));
@@ -178,6 +178,17 @@ namespace PlayerDBSync
                 }
             }
             return width is { } w && height is { } h ? (w, h) : null;
+        }
+
+        /// <summary>
+        ///  Under Wine/Proton the process isn't called archeage.exe (the kernel's name for it is cut to 15 characters and is
+        ///  often "wine64-preloader" or similar), but the game's name is in its command line, so <c>pgrep -f</c> looks there.
+        ///  Falls back to scanning process names when pgrep isn't installed.
+        /// </summary>
+        private static bool IsGameRunning(IProcessRunner runner)
+        {
+            var result = runner.Run("pgrep", ["-f", "-i", "--", GameCapture.GameProcessName], TimeSpan.FromSeconds(5));
+            return result == null ? IsGameProcessRunning() : result.ExitCode == 0 && result.Output.Length > 0;
         }
 
         /// <summary>Wine shows the program's name as its process name, with or without ".exe".</summary>
