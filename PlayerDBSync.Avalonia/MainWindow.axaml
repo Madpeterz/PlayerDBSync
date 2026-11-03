@@ -70,6 +70,11 @@
               <Button x:Name="btnOpenShots" Grid.Column="1" Content="Open folder" />
             </Grid>
             <CheckBox x:Name="chkDemo" Content="Upload screenshot on PlayerDB DemoOCR request" />
+            <!-- Linux only: the game's window can't be found reliably there, so the user picks what to capture. -->
+            <Grid x:Name="gridCaptureScreen" ColumnDefinitions="130,*" ColumnSpacing="8" IsVisible="False">
+              <TextBlock Classes="muted" Text="Capture" VerticalAlignment="Center" />
+              <ComboBox x:Name="cboScreen" Grid.Column="1" HorizontalAlignment="Stretch" />
+            </Grid>
             <TextBlock x:Name="lblCaptureNote" Classes="muted" TextWrapping="Wrap" IsVisible="False" />
           </StackPanel>
         </Border>

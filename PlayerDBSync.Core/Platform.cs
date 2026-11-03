@@ -23,9 +23,12 @@ namespace PlayerDBSync
             return Directory.Exists(wine) ? wine : home;
         }
 
-        /// <summary>The game's window capturer for this system.</summary>
-        public static IGameCapture CreateGameCapture() =>
-            OperatingSystem.IsWindows() ? new WindowsGameCapture() : new X11GameCapture(ProcessRunner.Default);
+        /// <summary>
+        ///  The screenshot taker for this system: the game's window on Windows, and on Linux the screen (or the whole
+        ///  desktop) the user picked in <see cref="AppSettings.CaptureArea"/>.
+        /// </summary>
+        public static IGameCapture CreateGameCapture(AppSettings settings) =>
+            OperatingSystem.IsWindows() ? new WindowsGameCapture() : new LinuxScreenCapture(ProcessRunner.Default, () => settings.CaptureArea);
 
         /// <summary>
         ///  Opens a web address or a folder with whatever the system uses for it (Explorer, the browser, xdg-open).

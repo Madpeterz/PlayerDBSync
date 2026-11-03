@@ -2,7 +2,7 @@ using SkiaSharp;
 
 namespace PlayerDBSync
 {
-    /// <summary>Takes a picture of the game window. How depends on the system: see <see cref="WindowsGameCapture"/> and <see cref="X11GameCapture"/>.</summary>
+    /// <summary>Takes a picture of the game window. How depends on the system: see <see cref="WindowsGameCapture"/> and <see cref="LinuxScreenCapture"/>.</summary>
     internal interface IGameCapture
     {
         /// <summary>The game's client area, or why it couldn't be taken (the game isn't running, is minimised…). The caller disposes the image.</summary>
@@ -12,7 +12,7 @@ namespace PlayerDBSync
     /// <summary>What every way of capturing the game window shares, and the saving of its pictures as WebP, for raid screenshots and Demo OCR alike.</summary>
     internal static class GameCapture
     {
-        /// <summary>The game's process (and, on Linux, window class) name, without ".exe".</summary>
+        /// <summary>The game's process name, without ".exe".</summary>
         public const string GameProcessName = "archeage";
 
         // Every 8th pixel of every 8th row is checked: enough to find any picture, without reading all of it.

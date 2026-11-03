@@ -53,15 +53,22 @@ namespace PlayerDBSync
             // As tapping your name on the site: a different background now. A hidden extra, so nothing shows it can be clicked.
             lblBrand.PointerPressed += (_, _) => _backdrop?.ChangeNow();
 
-            _engine = new SyncEngine(_settings, Platform.CreateGameCapture(), SynchronizationContext.Current);
+            _engine = new SyncEngine(_settings, Platform.CreateGameCapture(_settings), SynchronizationContext.Current);
             _engine.Logged += Log;
             _engine.StatusChanged += ShowStatus;
             _engine.AddonDataChanged += () => _ = RefreshVersionsAsync();
 
             if (!OperatingSystem.IsWindows())
             {
-                lblCaptureNote.Text = "Screenshots need xdotool and either maim or ImageMagick (import) installed, and the game shown by X11 or XWayland.";
+                gridCaptureScreen.IsVisible = true;
+                lblCaptureNote.Text = "Pick the screen the game is on (or the whole desktop). Screenshots need maim or ImageMagick (import) installed, or grim on Wayland.";
                 lblCaptureNote.IsVisible = true;
+                cboScreen.SelectionChanged += (_, _) => CaptureScreenChanged();
+                Opened += (_, _) => FillScreens();
+                if (Screens is { } screens)
+                {
+                    screens.Changed += (_, _) => FillScreens();
+                }
             }
 
             btnStart.Click += (_, _) => _ = ToggleSyncAsync();
@@ -108,6 +115,45 @@ namespace PlayerDBSync
             txtApiKey.Text = _settings.GetApiKey();
             chkRaid.IsChecked = _settings.RaidScreenshots;
             chkDemo.IsChecked = _settings.DemoOcrScreenshots;
+        }
+
+        // True while the screen list is rebuilt, so that isn't taken for the user picking one.
+        private bool _fillingScreens;
+
+        /// <summary>Lists the whole desktop and each screen, with the one in the settings picked (the whole desktop if that screen has gone).</summary>
+        private void FillScreens()
+        {
+            _fillingScreens = true;
+            try
+            {
+                var items = new List<ComboBoxItem> { new() { Content = "Whole desktop (all screens)", Tag = null } };
+                var number = 0;
+                foreach (var screen in Screens?.All ?? [])
+                {
+                    number++;
+                    var area = new CaptureArea(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height);
+                    items.Add(new ComboBoxItem { Content = $"Screen {number}: {area}" + (screen.IsPrimary ? " (primary)" : ""), Tag = area });
+                }
+                cboScreen.ItemsSource = items;
+                var picked = items.FirstOrDefault(item => Equals(item.Tag, _settings.CaptureArea));
+                // A screen that has gone (or been moved) is no longer meant: the whole desktop is what gets captured.
+                _settings.CaptureArea = picked?.Tag as CaptureArea;
+                cboScreen.SelectedItem = picked ?? items[0];
+            }
+            finally
+            {
+                _fillingScreens = false;
+            }
+        }
+
+        private void CaptureScreenChanged()
+        {
+            if (_fillingScreens || cboScreen.SelectedItem is not ComboBoxItem item)
+            {
+                return;
+            }
+            _settings.CaptureArea = item.Tag as CaptureArea;
+            SaveSettings();
         }
 
         private SyncInput CurrentInput() =>

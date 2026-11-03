@@ -17,7 +17,7 @@ You can sync either addon; leave the other empty. Houses and regrades used to co
 
 ## Requirements
 
-- **Windows** 10 or 11 (64-bit), or **Linux** (64-bit, with X11 or XWayland; see [Linux](#linux)). Nothing else to install for the app itself; the .NET runtime is bundled.
+- **Windows** 10 or 11 (64-bit), or **Linux** (64-bit; see [Linux](#linux)). Nothing else to install for the app itself; the .NET runtime is bundled.
 - The PlayerDB or RaidsDB addon (or both) installed in ArcheAge Classic.
 - Your PlayerDB **user ID** and **API key**.
 
@@ -70,17 +70,18 @@ What the window needs is on nearly every desktop already: the X11 client librari
 
 ### Screenshots on Linux
 
-The Windows app asks Windows for the game window's picture. Linux has no one way to do that, so the app uses small tools, and the game has to be an **X11 window** (a native X11 session, or XWayland on a Wayland one, which Wine and Proton use by default):
+The Windows app asks Windows for the game window's picture. On Linux the game's window can't be found reliably (Wine and Proton name and draw it in many ways), so the app takes a picture of a **screen** instead. Under **Screenshots** on the Config tab, **Capture** lists *Whole desktop* and each of your screens; pick the one the game is on. The game has to be visible there when the request comes in.
 
-| Needs | For | Debian/Ubuntu | Arch | Fedora |
-|-------|-----|---------------|------|--------|
-| `xdotool` | finding the game window | `sudo apt install xdotool` | `sudo pacman -S xdotool` | `sudo dnf install xdotool` |
-| `maim` **or** ImageMagick's `import` | taking its picture | `sudo apt install maim` (or `imagemagick`) | `sudo pacman -S maim` | `sudo dnf install maim` |
+A tool takes the picture; the app uses the first of these that is installed:
 
-- The window is found by its window class, `archeage` (Wine names it after the program). If yours has another name, set the `PLAYERDBSYNC_WINDOW_CLASS` environment variable to it (a regular expression; `xprop WM_CLASS` and a click on the game's window shows it).
-- The picture is the window's own contents, so other windows in front don't spoil it on a desktop with a compositor (nearly all have one). Without a compositor the game should be in front.
-- A **minimised** window can't be captured; the request is kept and retried, as on Windows. A capture that comes out **black** isn't saved: use windowed or borderless mode, not exclusive full screen.
-- A **pure Wayland** window (not XWayland) can't be captured by these tools.
+| Tool | For | Debian/Ubuntu | Arch | Fedora |
+|------|-----|---------------|------|--------|
+| `maim` **or** ImageMagick's `import` | X11 (also XWayland-only desktops) | `sudo apt install maim` (or `imagemagick`) | `sudo pacman -S maim` | `sudo dnf install maim` |
+| `grim` | Wayland (wlroots desktops such as Sway or Hyprland) | `sudo apt install grim` | `sudo pacman -S grim` | `sudo dnf install grim` |
+
+- It is a picture of what's on the screen, so the game must be in front, not minimised or on another virtual desktop. A capture that comes out **black** isn't saved: use windowed or borderless mode, not exclusive full screen.
+- On Wayland, `maim` and `import` only see XWayland windows and usually give black; use `grim`. GNOME and KDE on Wayland don't allow `grim`, so there the screenshot features aren't available.
+- If you unplug or rearrange screens, pick again; a screen that's gone falls back to the whole desktop.
 - The screenshots are saved to `/tmp/PlayerDBSync/Screenshots`, and **Open folder** opens it with `xdg-open`.
 
 ### What's different from Windows
@@ -205,9 +206,9 @@ To keep the settings somewhere else (to try the app without touching your real o
 | *Demo OCR requested but location.dat isn't up to date yet* | The addon isn't writing its location. Check that the DemoOCR feature is enabled in the PlayerDB addon and the game isn't paused or loading. |
 | *Demo OCR: needs the PlayerDB addon's Demos folder* | Update the PlayerDB addon, then play with it enabled until it creates `Demos`, and click **Stop** and **Start**. |
 | *Server rejected … not named \<raid start\>-\<n\>[-\<reason\>].webp* | A file in the screenshot folder wasn't saved by the app. Remove it from `%TEMP%\PlayerDBSync\Screenshots`. |
-| *… xdotool isn't installed* / *no screenshot tool is installed* (Linux) | Install `xdotool` and `maim` (or ImageMagick), see [Screenshots on Linux](#screenshots-on-linux). |
-| *… no game window found* (Linux) | The game isn't running, or its window isn't an X11 one, or its class isn't `archeage`: see `PLAYERDBSYNC_WINDOW_CLASS` above. |
-| *… there is no X11 display (DISPLAY isn't set)* (Linux) | Start the app from your desktop session (not over plain SSH), and run the game through X11 or XWayland. |
+| *… no screenshot tool is installed* (Linux) | Install `maim` (or ImageMagick), or `grim` on Wayland, see [Screenshots on Linux](#screenshots-on-linux). |
+| *… the capture … came out black* (Linux) | The game is in exclusive full screen, or (on Wayland) the tool can't see it: use windowed or borderless, and install `grim` on Wayland. |
+| *… there is no desktop to capture* (Linux) | Start the app from your desktop session, not over plain SSH. |
 | *PlayerDB Sync couldn't start: Unable to load shared library …* (Linux) | A library the window needs is missing; the message gives the `apt install` line for the usual ones. |
 
 ## Building from source

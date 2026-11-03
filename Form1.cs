@@ -68,7 +68,7 @@ namespace PlayerDBSync
             lblBrand.Click += (_, _) => _backdrop.ChangeNow();
             Disposed += (_, _) => _backdrop.Dispose();
 
-            _engine = new SyncEngine(_settings, Platform.CreateGameCapture());
+            _engine = new SyncEngine(_settings, Platform.CreateGameCapture(_settings));
             _engine.Logged += Log;
             _engine.StatusChanged += ShowStatus;
             _engine.AddonDataChanged += () => _ = RefreshVersionsAsync();

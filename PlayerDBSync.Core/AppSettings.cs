@@ -47,6 +47,9 @@ namespace PlayerDBSync
         /// <summary>Capture the game window when the PlayerDB addon sets Demos\request.dat, and upload it for Demo OCR.</summary>
         public bool DemoOcrScreenshots { get; set; }
 
+        /// <summary>Linux only: the screen to take screenshots of; null is the whole desktop. (Windows captures the game's window.)</summary>
+        public CaptureArea? CaptureArea { get; set; }
+
         /// <summary>
         ///  What was last uploaded for each file, keyed by file name.
         ///  Only valid for the folder/url/user it was recorded against (see <see cref="SyncTarget"/>).

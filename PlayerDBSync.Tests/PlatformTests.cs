@@ -18,7 +18,7 @@ namespace PlayerDBSync.Tests
         public static ProcessResult Ok(byte[] bytes) => new(0, bytes, "");
     }
 
-    public sealed class X11GameCaptureTests
+    public sealed class LinuxScreenCaptureTests
     {
         private static byte[] Png(SKColor color, int width = 64, int height = 48)
         {
@@ -28,28 +28,18 @@ namespace PlayerDBSync.Tests
             return data.ToArray();
         }
 
-        private static string? Env(string name) => name == "DISPLAY" ? ":0" : null;
+        private static string? X11(string name) => name == "DISPLAY" ? ":0" : null;
+        private static string? Wayland(string name) => name is "DISPLAY" or "WAYLAND_DISPLAY" ? "x" : null;
+
+        private static LinuxScreenCapture Capturer(FakeRunner runner, CaptureArea? area, Func<string, string?> environment) =>
+            new(runner, () => area, environment);
 
         [Fact]
-        public void ParsesWindowIdsAndGeometry()
+        public void CapturesTheWholeDesktopWithMaim()
         {
-            Assert.Equal([44040194L, 12L], X11GameCapture.ParseWindowIds(Encoding.UTF8.GetBytes("44040194\n\n12\nnot-an-id\n")));
-            Assert.Equal((2560, 1440), X11GameCapture.ParseGeometry("WINDOW=1\nX=10\nY=20\nWIDTH=2560\nHEIGHT=1440\nSCREEN=0\n"));
-            Assert.Null(X11GameCapture.ParseGeometry("WINDOW=1\nX=10\n"));
-        }
+            var runner = new FakeRunner((program, _) => program == "maim" ? FakeRunner.Ok(Png(new SKColor(10, 120, 200))) : null);
 
-        [Fact]
-        public void CapturesTheBiggestWindowOfTheGameClass()
-        {
-            var runner = new FakeRunner((program, args) => (program, args[0]) switch
-            {
-                ("xdotool", "search") => FakeRunner.Ok("100\n200\n"),
-                ("xdotool", "getwindowgeometry") => FakeRunner.Ok(args[2] == "200" ? "WIDTH=1920\nHEIGHT=1080\n" : "WIDTH=10\nHEIGHT=10\n"),
-                ("maim", _) => FakeRunner.Ok(Png(new SKColor(10, 120, 200))),
-                _ => null,
-            });
-
-            var (image, error) = new X11GameCapture(runner, () => true, Env).Capture();
+            var (image, error) = Capturer(runner, null, X11).Capture();
 
             Assert.Null(error);
             using (image)
@@ -57,93 +47,91 @@ namespace PlayerDBSync.Tests
                 Assert.Equal((64, 48), (image!.Width, image.Height));
                 Assert.Equal(SKAlphaType.Opaque, image.AlphaType);
             }
-            Assert.Contains("xdotool search --onlyvisible --class archeage", runner.Calls);
-            Assert.Contains("maim --hidecursor --window 200", runner.Calls);
+            Assert.Equal(["maim --hidecursor"], runner.Calls);
         }
 
         [Fact]
-        public void FallsBackToImportWhenMaimIsNotInstalled()
+        public void CapturesJustThePickedScreen()
         {
-            var runner = new FakeRunner((program, args) => program switch
+            var area = new CaptureArea(1920, 0, 2560, 1440);
+            var maim = new FakeRunner((program, _) => program == "maim" ? FakeRunner.Ok(Png(SKColors.Teal)) : null);
+            Capturer(maim, area, X11).Capture().Image!.Dispose();
+            Assert.Equal(["maim --hidecursor --geometry 2560x1440+1920+0"], maim.Calls);
+
+            var import = new FakeRunner((program, _) => program == "import" ? FakeRunner.Ok(Png(SKColors.Teal)) : null);
+            Capturer(import, area, X11).Capture().Image!.Dispose();
+            Assert.Contains("import -silent -window root -crop 2560x1440+1920+0 +repage png:-", import.Calls);
+        }
+
+        [Fact]
+        public void WaylandTriesGrimFirstAndX11NeverDoes()
+        {
+            var area = new CaptureArea(10, 20, 800, 600);
+            var wayland = new FakeRunner((program, _) => program == "grim" ? FakeRunner.Ok(Png(SKColors.Teal)) : null);
+            Capturer(wayland, area, Wayland).Capture().Image!.Dispose();
+            Assert.Equal(["grim -g 10,20 800x600 -"], wayland.Calls);
+
+            var x11 = new FakeRunner((_, _) => null);
+            Capturer(x11, area, X11).Capture();
+            Assert.DoesNotContain(x11.Calls, call => call.StartsWith("grim"));
+        }
+
+        [Fact]
+        public void AToolThatGivesBlackIsFollowedByTheNext()
+        {
+            var runner = new FakeRunner((program, _) => program switch
             {
-                "xdotool" when args[0] == "search" => FakeRunner.Ok("7\n"),
-                "xdotool" => FakeRunner.Ok("WIDTH=64\nHEIGHT=48\n"),
-                "import" => FakeRunner.Ok(Png(SKColors.Teal)),
+                "grim" => FakeRunner.Ok(Png(SKColors.Black)),
+                "maim" => FakeRunner.Ok(Png(SKColors.Teal)),
                 _ => null,
             });
 
-            var (image, error) = new X11GameCapture(runner, () => true, Env).Capture();
+            var (image, error) = Capturer(runner, null, Wayland).Capture();
 
             Assert.Null(error);
             image!.Dispose();
-            Assert.Contains("import -silent -window 7 png:-", runner.Calls);
         }
 
         [Fact]
         public void ABlackPictureIsNotSaved()
         {
-            var runner = new FakeRunner((program, args) => program switch
-            {
-                "xdotool" when args[0] == "search" => FakeRunner.Ok("7\n"),
-                "xdotool" => FakeRunner.Ok("WIDTH=64\nHEIGHT=48\n"),
-                "maim" => FakeRunner.Ok(Png(SKColors.Black)),
-                _ => null,
-            });
+            var runner = new FakeRunner((program, _) => program == "maim" ? FakeRunner.Ok(Png(SKColors.Black)) : null);
 
-            var (image, error) = new X11GameCapture(runner, () => true, Env).Capture();
+            var (image, error) = Capturer(runner, null, X11).Capture();
 
             Assert.Null(image);
             Assert.Contains("came out black", error);
         }
 
-        [Theory]
-        [InlineData(true, "minimised")]
-        [InlineData(false, "isn't running")]
-        public void NoVisibleWindowIsMinimisedOrNotRunning(bool processRunning, string expected)
-        {
-            // xdotool finds nothing: an exit code of 1 and no output.
-            var runner = new FakeRunner((_, _) => new ProcessResult(1, [], ""));
-
-            var (image, error) = new X11GameCapture(runner, () => processRunning, Env).Capture();
-
-            Assert.Null(image);
-            Assert.Contains(expected, error);
-        }
-
-        [Theory]
-        [InlineData(0, "minimised")]
-        [InlineData(1, "isn't running")]
-        public void UsesPgrepToTellIfTheGameIsRunning(int pgrepExit, string expected)
-        {
-            var runner = new FakeRunner((program, _) => program == "pgrep"
-                ? new ProcessResult(pgrepExit, pgrepExit == 0 ? "1234"u8.ToArray() : [], "")
-                : new ProcessResult(1, [], ""));
-
-            var (image, error) = new X11GameCapture(runner, environment: Env).Capture();
-
-            Assert.Null(image);
-            Assert.Contains(expected, error);
-            Assert.Contains("pgrep -f -i -- archeage", runner.Calls);
-        }
-
         [Fact]
         public void SaysWhatIsMissing()
         {
-            Assert.Contains("DISPLAY", new X11GameCapture(new FakeRunner((_, _) => null), () => true, _ => null).Capture().Error);
-            Assert.Contains("xdotool isn't installed", new X11GameCapture(new FakeRunner((_, _) => null), () => true, Env).Capture().Error);
+            Assert.Contains("DISPLAY", Capturer(new FakeRunner((_, _) => null), null, _ => null).Capture().Error);
+            Assert.Contains("install maim", Capturer(new FakeRunner((_, _) => null), null, X11).Capture().Error);
 
-            var noTools = new FakeRunner((program, args) => program == "xdotool"
-                ? FakeRunner.Ok(args[0] == "search" ? "7\n" : "WIDTH=64\nHEIGHT=48\n")
-                : null);
-            Assert.Contains("install maim", new X11GameCapture(noTools, () => true, Env).Capture().Error);
+            var failing = new FakeRunner((program, _) => program == "maim" ? new ProcessResult(1, [], "cannot open display") : null);
+            Assert.Contains("maim failed: cannot open display", Capturer(failing, null, X11).Capture().Error);
         }
 
         [Fact]
-        public void TheWindowClassCanBeOverridden()
+        public void TheAreaIsReadAtEachCapture()
         {
-            var runner = new FakeRunner((_, _) => new ProcessResult(1, [], ""));
-            new X11GameCapture(runner, () => false, name => name == "DISPLAY" ? ":0" : name == X11GameCapture.WindowClassVariable ? "wow" : null).Capture();
-            Assert.Contains("xdotool search --onlyvisible --class wow", runner.Calls);
+            var runner = new FakeRunner((_, _) => null);
+            CaptureArea? area = null;
+            var capturer = new LinuxScreenCapture(runner, () => area, X11);
+
+            capturer.Capture();
+            area = new CaptureArea(0, 0, 100, 100);
+            capturer.Capture();
+
+            Assert.Contains("maim --hidecursor --geometry 100x100+0+0", runner.Calls);
+        }
+
+        [Fact]
+        public void TheAreaSurvivesTheSettingsFile()
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(new AppSettings { CaptureArea = new CaptureArea(1, 2, 3, 4) });
+            Assert.Equal(new CaptureArea(1, 2, 3, 4), System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json)!.CaptureArea);
         }
     }
 

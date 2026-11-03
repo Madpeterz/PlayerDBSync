@@ -56,7 +56,7 @@ namespace PlayerDBSync.Tests
         }
 
         [Fact]
-        public void CapturesAWindowThroughRealPrograms()
+        public void CapturesTheScreenThroughARealProgram()
         {
             RequireUnix();
             using var folder = new TempFolder();
@@ -66,20 +66,14 @@ namespace PlayerDBSync.Tests
             {
                 File.WriteAllBytes(Path.Combine(folder.Path, "window.png"), png.ToArray());
             }
-            // Stand-ins for xdotool and maim, printing what the real ones would.
-            WriteTool(folder, "xdotool", """
-                case "$1" in
-                  search) echo 4194305 ;;
-                  getwindowgeometry) printf 'WINDOW=4194305\nX=0\nY=0\nWIDTH=2560\nHEIGHT=1440\nSCREEN=0\n' ;;
-                esac
-                """);
+            // A stand-in for maim, printing what the real one would.
             WriteTool(folder, "maim", $"cat '{Path.Combine(folder.Path, "window.png")}'");
 
             var path = Environment.GetEnvironmentVariable("PATH");
             Environment.SetEnvironmentVariable("PATH", folder.Path + Path.PathSeparator + path);
             try
             {
-                var (image, error) = new X11GameCapture(ProcessRunner.Default, () => true, name => name == "DISPLAY" ? ":0" : null).Capture();
+                var (image, error) = new LinuxScreenCapture(ProcessRunner.Default, () => null, name => name == "DISPLAY" ? ":0" : null).Capture();
 
                 Assert.Null(error);
                 using (image)
