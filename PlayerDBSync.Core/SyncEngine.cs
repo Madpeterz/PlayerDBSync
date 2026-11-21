@@ -29,6 +29,7 @@ namespace PlayerDBSync
         private readonly SyncJob _regrades;
         private readonly SyncJob _inventory;
         private readonly SyncJob _raids;
+        private readonly SyncJob _instances;
         private CancellationTokenSource? _cts;
 
         // While RaidsDB is synced: the raid item ignore list, downloaded every IgnoreListInterval, and the raid
@@ -80,6 +81,7 @@ namespace PlayerDBSync
             _regrades = new SyncJob("Regrades", inRaidsDb: false, AppSettings.RegradesFolder, "/api/regrades", settings.RegradeSyncedFiles, Log);
             _inventory = new SyncJob("Inventory", inRaidsDb: false, AppSettings.InventoryFolder, "/api/inventory", settings.InventorySyncedFiles, Log);
             _raids = new SyncJob("Raids", inRaidsDb: true, AppSettings.RaidsFolder, "/api/raids", settings.RaidSyncedFiles, Log);
+            _instances = new SyncJob("Instances", inRaidsDb: true, AppSettings.InstancesFolder, "/api/instances", settings.InstanceSyncedFiles, Log);
 
             _imageUploader = new RaidImageUploader(m => Log($"Screenshots: {m}"));
             _demoOcrUploader = new DemoOcrUploader(m => Log($"Demo OCR: {m}"));
@@ -98,7 +100,7 @@ namespace PlayerDBSync
         /// <summary>True from <see cref="Start"/> until <see cref="Stop"/>.</summary>
         public bool Syncing => _cts != null;
 
-        public IReadOnlyList<SyncJob> Jobs => [_players, _homes, _regrades, _inventory, _raids];
+        public IReadOnlyList<SyncJob> Jobs => [_players, _homes, _regrades, _inventory, _raids, _instances];
 
         public IReadOnlyList<PeriodicTask> Tasks => [_ignoreList, _imageUploads, _demoOcrUploads];
 
@@ -213,6 +215,7 @@ namespace PlayerDBSync
             _settings.RegradeSyncTarget = Retarget(_regrades, _settings.RegradeSyncTarget);
             _settings.InventorySyncTarget = Retarget(_inventory, _settings.InventorySyncTarget);
             _settings.RaidSyncTarget = Retarget(_raids, _settings.RaidSyncTarget);
+            _settings.InstanceSyncTarget = Retarget(_instances, _settings.InstanceSyncTarget);
 
             _cts = new CancellationTokenSource();
             var token = _cts.Token;
@@ -712,7 +715,7 @@ namespace PlayerDBSync
         // ---- clearing the addons' data ----
 
         /// <summary>
-        ///  The *.dat files in each addon data folder that exists (Players, Houses, Regrades, Inventory, Raids), for
+        ///  The *.dat files in each addon data folder that exists (Players, Houses, Regrades, Inventory, Raids, Instances), for
         ///  <see cref="Clear"/> to move to the Recycle Bin or Trash.
         /// </summary>
         public List<ClearFolder> PlanClear(SyncInput input) => Jobs

@@ -92,6 +92,42 @@ namespace PlayerDBSync.Tests
         }
 
         [Fact]
+        public async Task UploadsRaidsDbInstancesToTheirOwnEndpoint()
+        {
+            var instances = Path.Combine(_raidsDb.Path, "Instances");
+            Directory.CreateDirectory(instances);
+            File.WriteAllText(Path.Combine(instances, "1792312031.dat"), "{ addon_version = \"1.4.0\", zone_name = \"Hasla\", }");
+            var engine = Engine();
+
+            var (problem, firstRuns) = engine.Start(Input(_raidsDb.Path), false, false);
+            await firstRuns;
+
+            Assert.Null(problem);
+            var request = Assert.Single(_server.Requests, r => r.Path == "/api/instances");
+            Assert.Null(request.Rejection);
+            Assert.Contains("zone_name", Assert.Single(request.Blobs.Select(System.Text.Encoding.UTF8.GetString)));
+            Assert.Contains(_log, line => line.StartsWith("Instances: Uploaded"));
+            Assert.Single(engine.Settings.InstanceSyncedFiles);
+            Assert.Empty(engine.Settings.RaidSyncedFiles);
+        }
+
+        [Fact]
+        public async Task ARaidsDbFolderWithOnlyInstancesIsTaken()
+        {
+            Directory.Delete(Path.Combine(_raidsDb.Path, "Raids"));
+            Directory.CreateDirectory(Path.Combine(_raidsDb.Path, "Instances"));
+            var engine = Engine();
+
+            var (problem, firstRuns) = engine.Start(Input(_raidsDb.Path), false, false);
+            await firstRuns;
+
+            Assert.Null(problem);
+            Assert.Contains(_log, line => line.StartsWith("Raids: skipped"));
+            Assert.Contains(_log, line => line.StartsWith("Instances: watching"));
+            Assert.False(engine.RaidsEnabled);
+        }
+
+        [Fact]
         public async Task SaysWhatIsWrongAndDoesNotStart()
         {
             var engine = Engine();

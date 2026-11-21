@@ -16,6 +16,7 @@ namespace PlayerDBSync
         public const string RegradesFolder = "Regrades";
         public const string InventoryFolder = "Inventory";
         public const string RaidsFolder = "Raids";
+        public const string InstancesFolder = "Instances";
         public const string DemosFolder = "Demos";
         public const string DefaultUrl = "https://playerdb.blackatom.win";
 
@@ -73,6 +74,10 @@ namespace PlayerDBSync
         public Dictionary<string, SyncRecord> RaidSyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string RaidSyncTarget { get; set; } = "";
 
+        /// <summary>As <see cref="SyncedFiles"/>/<see cref="SyncTarget"/>, for the RaidsDB Instances folder.</summary>
+        public Dictionary<string, SyncRecord> InstanceSyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string InstanceSyncTarget { get; set; } = "";
+
         /// <summary>Legacy (hash-only) form of <see cref="SyncedFiles"/>; read for migration, never written.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Dictionary<string, string>? UploadedHashes { get; set; }
@@ -101,6 +106,7 @@ namespace PlayerDBSync
                         settings.RegradeSyncedFiles = new(settings.RegradeSyncedFiles, StringComparer.OrdinalIgnoreCase);
                         settings.InventorySyncedFiles = new(settings.InventorySyncedFiles, StringComparer.OrdinalIgnoreCase);
                         settings.RaidSyncedFiles = new(settings.RaidSyncedFiles, StringComparer.OrdinalIgnoreCase);
+                        settings.InstanceSyncedFiles = new(settings.InstanceSyncedFiles, StringComparer.OrdinalIgnoreCase);
                         if (settings.UploadedHashes != null)
                         {
                             // Size/time unknown, so the first scan re-hashes these once but won't re-upload them.

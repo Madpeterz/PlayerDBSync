@@ -16,7 +16,8 @@ namespace PlayerDBSync
         public static readonly string[] PlayerDbDataFolders =
             [AppSettings.PlayersFolder, AppSettings.HousesFolder, AppSettings.RegradesFolder, AppSettings.InventoryFolder];
 
-        public static readonly string[] RaidsDbDataFolders = [AppSettings.RaidsFolder];
+        // RaidsDB keeps raids and (from 1.4.0) instances side by side; each is synced if its folder is there.
+        public static readonly string[] RaidsDbDataFolders = [AppSettings.RaidsFolder, AppSettings.InstancesFolder];
 
         /// <summary>True if <paramref name="path"/> has the addon marker file and at least one of <paramref name="dataFolders"/>.</summary>
         public static bool IsAddonFolder(string path, params string[] dataFolders) =>

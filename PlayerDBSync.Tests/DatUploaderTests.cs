@@ -30,6 +30,7 @@ namespace PlayerDBSync.Tests
         [InlineData("/api/regrades")]
         [InlineData("/api/raids")]
         [InlineData("/api/inventory")]
+        [InlineData("/api/instances")]
         public async Task UploadsTheFilesAsTheSiteTakesThem(string path)
         {
             _folder.Write("ab.dat", "{ a = 1, }");

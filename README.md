@@ -11,6 +11,7 @@ It watches the addons' data folders, and every 30 to 45 seconds uploads any file
 | PlayerDB  | `PlayerDB\Regrades`   | `<server>/api/regrades` |
 | PlayerDB  | `PlayerDB\Inventory`  | `<server>/api/inventory` |
 | RaidsDB   | `RaidsDB\Raids`       | `<server>/api/raids`    |
+| RaidsDB   | `RaidsDB\Instances`   | `<server>/api/instances` (RaidsDB 1.4.0 and newer) |
 | PlayerDB  | `PlayerDB\Demos`      | `<server>/api/demoocr` (screenshots, see [Demo OCR screenshots](#demo-ocr-screenshots)) |
 
 You can sync either addon; leave the other empty. Houses and regrades used to come from the separate HomeDB and RegradeDB addons; both are now defunct, merged into PlayerDB (see [Upgrading from HomeDB and RegradeDB](#upgrading-from-homedb-and-regradedb)).
@@ -32,7 +33,7 @@ You can sync either addon; leave the other empty. Houses and regrades used to co
    | Field              | What to enter |
    |--------------------|---------------|
    | **PlayerDB addon** | The PlayerDB addon folder: the one containing `main.lua` and the `Players`, `Houses`, `Regrades` and `Inventory` folders. Each of those is synced if it's there; one the addon hasn't made yet is skipped until you stop and start again. Leave empty to skip player, house, regrade and inventory uploads. |
-   | **RaidsDB addon**  | The RaidsDB addon folder: the one containing `main.lua` and a `Raids` folder. Leave empty to skip raid uploads. |
+   | **RaidsDB addon**  | The RaidsDB addon folder: the one containing `main.lua` and a `Raids` or `Instances` folder. Leave empty to skip raid and instance uploads. |
    | **Server URL**     | The server's base address, e.g. `https://playerdb.blackatom.win` (no `/api/...` on the end). |
    | **User ID**        | Your PlayerDB user ID (a number). |
    | **API key**        | Your PlayerDB API key. |
@@ -43,7 +44,7 @@ You can sync either addon; leave the other empty. Houses and regrades used to co
    - `C:\AAClassic\Documents\Addon\`
    - on Linux, inside the game's Wine prefix, e.g. `~/.wine/drive_c/AAClassic/Documents/Addon/`
 
-   If you pick the `Players`, `Houses`, `Regrades`, `Inventory` or `Raids` folder by mistake, the app selects the addon folder above it for you.
+   If you pick the `Players`, `Houses`, `Regrades`, `Inventory`, `Raids` or `Instances` folder by mistake, the app selects the addon folder above it for you.
 
    Under each folder the addon's version is shown in green (e.g. `2.5.0`), read from `addon_version` in its most recently written data file. It's read again whenever the folder changes and after each upload, so it follows addon updates. Nothing is shown if the folder isn't an addon's yet, or if its newest five data files have no version.
 
@@ -95,7 +96,7 @@ A tool takes the picture; the app uses the first of these that is installed:
 - Only changed files are uploaded. The app remembers what it has already sent, so restarting it doesn't upload everything again. Changing a folder, the server URL or the user ID does re-upload everything for that addon.
 - Changed files are sent in batches of up to 500.
 - Bookkeeping files (`_count.dat`, `_files.dat`, `empty.keep`) are skipped.
-- Raids are uploaded once the recording is stopped and saved to `Raids`; a raid still being recorded isn't sent.
+- Raids are uploaded once the recording is stopped and saved to `Raids`; a raid still being recorded isn't sent. Instances are the same, saved to `Instances`.
 - If the server can't be reached or refuses an upload, the app waits longer between attempts (the usual 30 to 45 seconds, doubled for each failure in a row, up to 30 minutes) and logs the error once instead of every time. Each addon retries on its own, so a problem with one doesn't hold up the others.
 - If the server rejects one particular file, that file is skipped until it changes or the app is restarted.
 
@@ -103,7 +104,7 @@ A tool takes the picture; the app uses the first of these that is installed:
 
 If the addons were updated to a version the server doesn't take yet, the files they saved are rejected on every sync. **Clear addon data…** (at the bottom of the **Config** tab, while stopped) gets rid of them:
 
-- It moves every `*.dat` file in `PlayerDB\Players`, `PlayerDB\Houses`, `PlayerDB\Regrades`, `PlayerDB\Inventory` and `RaidsDB\Raids` to the Recycle Bin, so they can be restored. This includes the addons' `_count.dat` and `_files.dat`. The folders and any other files are left alone.
+- It moves every `*.dat` file in `PlayerDB\Players`, `PlayerDB\Houses`, `PlayerDB\Regrades`, `PlayerDB\Inventory`, `RaidsDB\Raids` and `RaidsDB\Instances` to the Recycle Bin, so they can be restored. This includes the addons' `_count.dat` and `_files.dat`. The folders and any other files are left alone.
 - It first asks you to disable the addons (and reload, if you're in the game), as they'd otherwise save their old data straight back, and shows how many files each folder has. Click **Clean** to go ahead or **Nevermind** to leave everything as it is. Once it's done, it reminds you to re-enable the addons.
 - The app forgets what it uploaded from those folders, so everything the addons collect from then on is uploaded as new.
 
@@ -196,7 +197,7 @@ To keep the settings somewhere else (to try the app without touching your real o
 
 | Message | What to do |
 |---------|------------|
-| *This doesn't look like the PlayerDB/RaidsDB addon folder* | Pick the addon's own folder, the one with `main.lua` in it. If the `Players`, `Houses`, `Regrades`, `Inventory` or `Raids` folder doesn't exist yet, run the game with the addon enabled first so it creates it. |
+| *This doesn't look like the PlayerDB/RaidsDB addon folder* | Pick the addon's own folder, the one with `main.lua` in it. If the `Players`, `Houses`, `Regrades`, `Inventory`, `Raids` or `Instances` folder doesn't exist yet, run the game with the addon enabled first so it creates it. |
 | *Server refused every upload … check the user ID, API key and PC clock* | Check your user ID and API key. Uploads are signed with your PC's time, so make sure Windows has the right time (Settings → Time & language → **Sync now**). |
 | *Failing (3x) – next try …* | The server is down or unreachable. The app keeps retrying on its own; check the Server URL if it never recovers. |
 | *Homes: skipped, the PlayerDB addon has no Houses folder yet* (or Players/Regrades/Inventory) | The addon hasn't saved any of those yet. Play with the addon enabled until it creates the folder, then click **Stop** and **Start**. |

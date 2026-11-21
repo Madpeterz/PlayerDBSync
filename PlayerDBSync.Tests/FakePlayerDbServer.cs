@@ -74,6 +74,7 @@ namespace PlayerDBSync.Tests
             ["/api/raids"] = EndpointKind.Upload,
             ["/api/raids/images"] = EndpointKind.RaidImages,
             ["/api/raids/ignored"] = EndpointKind.SendsBack,
+            ["/api/instances"] = EndpointKind.Upload,
             ["/api/inventory"] = EndpointKind.Upload,
             ["/api/demoocr"] = EndpointKind.DemoOcr,
         };

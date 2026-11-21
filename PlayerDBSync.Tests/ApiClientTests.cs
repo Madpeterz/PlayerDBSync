@@ -23,6 +23,7 @@ namespace PlayerDBSync.Tests
             { "/api/regrades", [("blobdat", Blob)] },
             { "/api/raids", [("blobdat", new[] { Blob, OtherBlob })] },
             { "/api/inventory", [("blobdat", Blob)] },
+            { "/api/instances", [("blobdat", new[] { Blob, OtherBlob })] },
             { "/api/raids/images", [("names", new[] { "2026-10-17_19-07-20-1-start.webp", "2026-10-17_19-07-20-2.webp" }), ("blobdat", new[] { Blob, OtherBlob })] },
             { "/api/raids/images", [("names", new[] { "2026-10-17_19-07-20-1.webp" }), ("blobdat", new[] { Blob })] },
             { "/api/demoocr", [("sextant", "16° 10' 20\" S, 9° 41' 2\" W"), ("blobdat", Blob)] },
