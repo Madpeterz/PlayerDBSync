@@ -85,7 +85,7 @@ namespace PlayerDBSync.Tests
             Assert.Null(request.Rejection);
             Assert.Contains("addon_version", Assert.Single(request.Blobs.Select(System.Text.Encoding.UTF8.GetString)));
             Assert.Contains(_log, line => line.StartsWith("Players: Uploaded"));
-            Assert.Contains(_log, line => line.StartsWith("Homes: skipped"));
+            Assert.Contains(_log, line => line.StartsWith("Regrades: skipped"));
             // A trailing slash on the address is dealt with, and what was synced is remembered.
             Assert.Equal(_server.BaseUrl, engine.Settings.Url);
             Assert.Single(engine.Settings.SyncedFiles);

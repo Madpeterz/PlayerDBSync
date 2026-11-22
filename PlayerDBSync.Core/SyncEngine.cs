@@ -25,7 +25,6 @@ namespace PlayerDBSync
         private bool _disposed;
 
         private readonly SyncJob _players;
-        private readonly SyncJob _homes;
         private readonly SyncJob _regrades;
         private readonly SyncJob _inventory;
         private readonly SyncJob _raids;
@@ -77,7 +76,6 @@ namespace PlayerDBSync
             _demoOcrOn = settings.DemoOcrScreenshots;
 
             _players = new SyncJob("Players", inRaidsDb: false, AppSettings.PlayersFolder, "/api/players", settings.SyncedFiles, Log);
-            _homes = new SyncJob("Homes", inRaidsDb: false, AppSettings.HousesFolder, "/api/homes", settings.HomeSyncedFiles, Log);
             _regrades = new SyncJob("Regrades", inRaidsDb: false, AppSettings.RegradesFolder, "/api/regrades", settings.RegradeSyncedFiles, Log);
             _inventory = new SyncJob("Inventory", inRaidsDb: false, AppSettings.InventoryFolder, "/api/inventory", settings.InventorySyncedFiles, Log);
             _raids = new SyncJob("Raids", inRaidsDb: true, AppSettings.RaidsFolder, "/api/raids", settings.RaidSyncedFiles, Log);
@@ -100,7 +98,7 @@ namespace PlayerDBSync
         /// <summary>True from <see cref="Start"/> until <see cref="Stop"/>.</summary>
         public bool Syncing => _cts != null;
 
-        public IReadOnlyList<SyncJob> Jobs => [_players, _homes, _regrades, _inventory, _raids, _instances];
+        public IReadOnlyList<SyncJob> Jobs => [_players, _regrades, _inventory, _raids, _instances];
 
         public IReadOnlyList<PeriodicTask> Tasks => [_ignoreList, _imageUploads, _demoOcrUploads];
 
@@ -211,7 +209,6 @@ namespace PlayerDBSync
             SaveSettings();
 
             _settings.SyncTarget = Retarget(_players, _settings.SyncTarget);
-            _settings.HomeSyncTarget = Retarget(_homes, _settings.HomeSyncTarget);
             _settings.RegradeSyncTarget = Retarget(_regrades, _settings.RegradeSyncTarget);
             _settings.InventorySyncTarget = Retarget(_inventory, _settings.InventorySyncTarget);
             _settings.RaidSyncTarget = Retarget(_raids, _settings.RaidSyncTarget);
@@ -715,7 +712,7 @@ namespace PlayerDBSync
         // ---- clearing the addons' data ----
 
         /// <summary>
-        ///  The *.dat files in each addon data folder that exists (Players, Houses, Regrades, Inventory, Raids, Instances), for
+        ///  The *.dat files in each addon data folder that exists (Players, Regrades, Inventory, Raids, Instances), for
         ///  <see cref="Clear"/> to move to the Recycle Bin or Trash.
         /// </summary>
         public List<ClearFolder> PlanClear(SyncInput input) => Jobs

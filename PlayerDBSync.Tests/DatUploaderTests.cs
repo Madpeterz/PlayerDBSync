@@ -26,7 +26,6 @@ namespace PlayerDBSync.Tests
 
         [Theory]
         [InlineData("/api/players")]
-        [InlineData("/api/homes")]
         [InlineData("/api/regrades")]
         [InlineData("/api/raids")]
         [InlineData("/api/inventory")]

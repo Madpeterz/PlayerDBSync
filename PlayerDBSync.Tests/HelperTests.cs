@@ -126,11 +126,11 @@ namespace PlayerDBSync.Tests
         public void TheNewestFileWithAVersionGivesIt()
         {
             Write("Players", "ab.dat", "{ { addon_version = \"2.4.0\", }, }", minutesAgo: 10);
-            Write("Houses", "ac.dat", "{ { addon_version = \"2.5.0\", }, }", minutesAgo: 5);
-            Write("Houses", "ad.dat", "{ { owner = \"Stumpy\", }, }", minutesAgo: 1);
-            Write("Houses", "_count.dat", "{ addon_version = \"9.9.9\", }", minutesAgo: 0);
+            Write("Regrades", "ac.dat", "{ { addon_version = \"2.5.0\", }, }", minutesAgo: 5);
+            Write("Regrades", "ad.dat", "{ { owner = \"Stumpy\", }, }", minutesAgo: 1);
+            Write("Regrades", "_count.dat", "{ addon_version = \"9.9.9\", }", minutesAgo: 0);
 
-            Assert.Equal("2.5.0", AddonVersion.Newest(_folder.Path, ["Players", "Houses"]));
+            Assert.Equal("2.5.0", AddonVersion.Newest(_folder.Path, ["Players", "Regrades"]));
             Assert.Equal("2.4.0", AddonVersion.Newest(_folder.Path, ["Players"]));
         }
 

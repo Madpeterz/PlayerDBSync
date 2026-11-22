@@ -19,7 +19,6 @@ namespace PlayerDBSync.Tests
         {
             { "/api/players", [("blobdat", Blob)] },
             { "/api/players", [("blobdat", new[] { Blob, OtherBlob })] },
-            { "/api/homes", [("blobdat", new[] { Blob, OtherBlob })] },
             { "/api/regrades", [("blobdat", Blob)] },
             { "/api/raids", [("blobdat", new[] { Blob, OtherBlob })] },
             { "/api/inventory", [("blobdat", Blob)] },

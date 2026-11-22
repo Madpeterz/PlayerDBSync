@@ -12,7 +12,6 @@ namespace PlayerDBSync
         // The addon folders are recognised by the marker file and their data folder.
         public const string AddonMarkerFile = "main.lua";
         public const string PlayersFolder = "Players";
-        public const string HousesFolder = "Houses";
         public const string RegradesFolder = "Regrades";
         public const string InventoryFolder = "Inventory";
         public const string RaidsFolder = "Raids";
@@ -33,7 +32,7 @@ namespace PlayerDBSync
         private static readonly string SettingsPath = Path.Combine(SettingsFolder, "settings.json");
 
         /// <summary>
-        ///  The PlayerDB addon folder, with its Players, Houses, Regrades and Inventory (earlier builds stored its Players
+        ///  The PlayerDB addon folder, with its Players, Regrades and Inventory (earlier builds stored its Players
         ///  subfolder; upgraded on load). The separate HomeDB and RegradeDB folders of older builds are no longer read.
         /// </summary>
         public string Folder { get; set; } = Platform.DefaultAddonFolder;
@@ -57,10 +56,6 @@ namespace PlayerDBSync
         /// </summary>
         public Dictionary<string, SyncRecord> SyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string SyncTarget { get; set; } = "";
-
-        /// <summary>As <see cref="SyncedFiles"/>/<see cref="SyncTarget"/>, for the PlayerDB Houses folder.</summary>
-        public Dictionary<string, SyncRecord> HomeSyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public string HomeSyncTarget { get; set; } = "";
 
         /// <summary>As <see cref="SyncedFiles"/>/<see cref="SyncTarget"/>, for the PlayerDB Regrades folder.</summary>
         public Dictionary<string, SyncRecord> RegradeSyncedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -102,7 +97,6 @@ namespace PlayerDBSync
                     if (settings != null)
                     {
                         settings.SyncedFiles = new(settings.SyncedFiles, StringComparer.OrdinalIgnoreCase);
-                        settings.HomeSyncedFiles = new(settings.HomeSyncedFiles, StringComparer.OrdinalIgnoreCase);
                         settings.RegradeSyncedFiles = new(settings.RegradeSyncedFiles, StringComparer.OrdinalIgnoreCase);
                         settings.InventorySyncedFiles = new(settings.InventorySyncedFiles, StringComparer.OrdinalIgnoreCase);
                         settings.RaidSyncedFiles = new(settings.RaidSyncedFiles, StringComparer.OrdinalIgnoreCase);

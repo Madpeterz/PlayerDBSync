@@ -69,6 +69,7 @@ namespace PlayerDBSync.Tests
         public static readonly IReadOnlyDictionary<string, EndpointKind> Endpoints = new Dictionary<string, EndpointKind>
         {
             ["/api/players"] = EndpointKind.Upload,
+            // Still on the site, but no longer posted to: PlayerDB houses aren't uploaded.
             ["/api/homes"] = EndpointKind.Upload,
             ["/api/regrades"] = EndpointKind.Upload,
             ["/api/raids"] = EndpointKind.Upload,
