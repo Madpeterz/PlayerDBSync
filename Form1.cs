@@ -18,7 +18,7 @@ namespace PlayerDBSync
         private string? _updateTag;
 
         // The row each event has while syncing: its bar and its status.
-        private readonly Dictionary<TimedEvent, (ScheduleBar Bar, Label Status)> _rows = new();
+        private readonly Dictionary<TimedEvent, (ScheduleBar Bar, Label Status, Control[] Cells)> _rows = new();
 
         // The header's tabs and the page each shows.
         private readonly (NavTab Tab, BackdropPanel Page)[] _pages;
@@ -229,14 +229,38 @@ namespace PlayerDBSync
             row.Bar.Fraction = (float)ev.Fraction(now);
         }
 
-        /// <summary>Shown beside the event's bar (red while failing); dropped once the sync has stopped and the rows have gone.</summary>
+        /// <summary>
+        ///  Shown beside the event's bar (red while failing, when clicking the row says why); dropped once the sync has
+        ///  stopped and the rows have gone.
+        /// </summary>
         private void ShowStatus(TimedEvent ev)
         {
             if (_rows.TryGetValue(ev, out var row))
             {
                 row.Status.Text = ev.Status;
                 row.Status.ForeColor = ev.Failing ? Theme.Bad : Theme.Muted;
+                foreach (var control in row.Cells)
+                {
+                    control.Cursor = ev.Failing ? Cursors.Hand : Cursors.Default;
+                }
             }
+        }
+
+        /// <summary>A failing row, clicked: why it's failing.</summary>
+        private void ShowFailure(TimedEvent ev)
+        {
+            if (!ev.Failing)
+            {
+                return;
+            }
+            TaskDialog.ShowDialog(this, new TaskDialogPage
+            {
+                Caption = "PlayerDB Sync",
+                Heading = $"{ev.Label} is failing",
+                Text = ev.FailureDetails(),
+                Icon = TaskDialogIcon.Warning,
+                Buttons = { TaskDialogButton.OK },
+            });
         }
 
         /// <summary>
@@ -264,13 +288,16 @@ namespace PlayerDBSync
                     Margin = new Padding(0, 5, 16, 5),
                 };
                 var status = new Label { AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = Theme.Muted };
-                _rows[ev] = (bar, status);
+                var label = new Label { Text = ev.Label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 5, 16, 5) };
+                Control[] cells = [label, bar, status];
+                foreach (var cell in cells)
+                {
+                    cell.Click += (_, _) => ShowFailure(ev);
+                }
+                _rows[ev] = (bar, status, cells);
                 // What the event already said while its row wasn't there (its first run starts at once).
                 ShowStatus(ev);
-                AddRow(tblSchedule,
-                    new Label { Text = ev.Label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 5, 16, 5) },
-                    bar,
-                    status);
+                AddRow(tblSchedule, cells);
             }
             tblSchedule.ResumeLayout();
 

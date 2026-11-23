@@ -219,7 +219,6 @@ namespace PlayerDBSync
             foreach (var job in Jobs)
             {
                 job.Uploader.ResetCache();
-                job.FailureCount = 0;
                 job.LastError = null;
                 if (job.Enabled)
                 {
@@ -233,7 +232,7 @@ namespace PlayerDBSync
             // Each is done once now (below); this only holds off Tick until that has started.
             foreach (var ev in Scheduled)
             {
-                ev.Failing = false;
+                ev.Succeeded();
                 ev.Status = "";
                 ev.WaitUntil(DateTime.Now + ev.NextWait());
             }
@@ -350,9 +349,9 @@ namespace PlayerDBSync
             }
 
             task.WaitUntil(DateTime.Now + task.NextWait());
-            task.Failing = error != null;
             if (error == null)
             {
+                task.Succeeded();
                 if (task.LastError != null)
                 {
                     Log($"{task.Name}: {task.Recovered}");
@@ -361,6 +360,7 @@ namespace PlayerDBSync
                 SetStatus(task, $"Last checked {DateTime.Now:T}");
                 return;
             }
+            task.Failed(error);
             SetStatus(task, $"Failing – next try {task.DueAt:T}");
 
             // Only log when the error changes; the next run retries.
@@ -462,17 +462,15 @@ namespace PlayerDBSync
             {
                 Log($"{job.Name}: connection restored");
             }
-            job.FailureCount = 0;
+            job.Succeeded();
             job.LastError = null;
-            job.Failing = false;
             job.WaitUntil(DateTime.Now + job.NextWait());
             SetStatus(job, $"Last checked {DateTime.Now:T}");
         }
 
         private void OnSyncFailed(SyncJob job, string error)
         {
-            job.FailureCount++;
-            job.Failing = true;
+            job.Failed(error);
 
             // A sync's wait (30–45 s), doubled for each failure in a row, up to 30 min.
             var delay = job.NextWait() * Math.Pow(2, Math.Min(job.FailureCount - 1, 10));

@@ -6,8 +6,8 @@ namespace PlayerDBSync
         public static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(30);
         public static readonly TimeSpan ScreenshotCheckInterval = TimeSpan.FromSeconds(2);
 
-        // The addon gives up on a DemoOCR request after 60 s and rewrites its location every second, so check often.
-        public static readonly TimeSpan DemoOcrCheckInterval = TimeSpan.FromSeconds(1);
+        // The addon gives up on a DemoOCR request after 60 s and rewrites its location every second, so check twice as often.
+        public static readonly TimeSpan DemoOcrCheckInterval = TimeSpan.FromMilliseconds(500);
 
         // How often each addon folder is synced (each wait a random pick in this range, so the folders don't all check
         // at once), the raid item ignore list downloaded and waiting screenshots uploaded. A sync with nothing changed
@@ -52,8 +52,52 @@ namespace PlayerDBSync
         public abstract bool Enabled { get; }
         public bool Running { get; set; }
 
-        // Its last run failed; its bar and status turn red.
-        public bool Failing { get; set; }
+        // Its last run failed; its bar and status turn red, and clicking its row shows FailureDetails.
+        public bool Failing => Error != null;
+
+        /// <summary>Why its last run failed, or null while it works.</summary>
+        public string? Error { get; private set; }
+
+        /// <summary>Runs failed in a row, and when the first of them failed.</summary>
+        public int FailureCount { get; private set; }
+        public DateTime FailingSince { get; private set; }
+
+        public void Failed(string error)
+        {
+            if (FailureCount++ == 0)
+            {
+                FailingSince = DateTime.Now;
+            }
+            Error = error;
+        }
+
+        public void Succeeded()
+        {
+            FailureCount = 0;
+            Error = null;
+        }
+
+        /// <summary>What it does each run, for <see cref="FailureDetails"/>; null if its label says enough.</summary>
+        protected virtual string? Doing => null;
+
+        /// <summary>Shown when a failing row is clicked: why it failed, since when, and when it next tries.</summary>
+        public string FailureDetails()
+        {
+            static string When(DateTime t) => t.Date == DateTime.Today ? $"{t:T}" : $"{t:g}";
+            var lines = new List<string>();
+            if (Doing is { } doing)
+            {
+                lines.Add(doing);
+                lines.Add("");
+            }
+            lines.Add($"Why: {Error}");
+            lines.Add("");
+            lines.Add(FailureCount == 1
+                ? $"Failed at {When(FailingSince)}."
+                : $"Failing since {When(FailingSince)} ({FailureCount} tries in a row).");
+            lines.Add($"Next try at {When(DueAt)}.");
+            return string.Join(Environment.NewLine, lines);
+        }
 
         /// <summary>Shown beside its bar: when it was last checked, or that it's failing and when it next tries.</summary>
         public string Status { get; set; } = "";
@@ -101,9 +145,9 @@ namespace PlayerDBSync
         public string Folder { get; set; } = "";
         public string Url { get; set; } = "";
         public override bool Enabled => Folder.Length > 0;
+        protected override string? Doing => $"Uploads changed files from {Folder} to {Url}.";
 
-        // Backoff state while the server (or folder) is failing.
-        public int FailureCount { get; set; }
+        // The last error logged, so a repeat isn't logged again.
         public string? LastError { get; set; }
     }
 

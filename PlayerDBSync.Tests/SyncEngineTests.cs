@@ -172,6 +172,12 @@ namespace PlayerDBSync.Tests
             Assert.Equal(1, players.FailureCount);
             Assert.Contains(_log, line => line.StartsWith("Players:") && line.Contains("retrying with backoff"));
             Assert.Contains("Failing (1x)", players.Status);
+            // Clicking the row says why, what it was doing and when it next tries.
+            var details = players.FailureDetails();
+            Assert.Contains("503", details);
+            Assert.Contains("down for maintenance", details);
+            Assert.Contains(players.Url, details);
+            Assert.Contains("Next try at", details);
             // The next try is the usual 30 to 45 s away or more (doubling with each failure in a row).
             Assert.True(players.DueAt - players.WaitStart >= TimeSpan.FromSeconds(30));
         }

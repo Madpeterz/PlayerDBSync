@@ -60,9 +60,6 @@ namespace PlayerDBSync.Tests
             Assert.Equal(FakePlayerDbServer.Endpoints.Keys.Order(), Routes().Keys.Order());
         }
 
-        /// <summary>Routes the site still has that the app no longer posts to.</summary>
-        private static readonly string[] NotPostedTo = ["/api/homes"];
-
         [Fact]
         public void EveryEndpointTheAppPostsToIsARoute()
         {
@@ -75,7 +72,7 @@ namespace PlayerDBSync.Tests
 
             Assert.NotEmpty(used);
             Assert.All(used, u => Assert.True(routes.ContainsKey(u.Path), $"{u.File} posts to {u.Path}, which the site doesn't have"));
-            Assert.Equal(routes.Keys.Except(NotPostedTo).Order(), used.Select(u => u.Path).Distinct().Order());
+            Assert.Equal(routes.Keys.Order(), used.Select(u => u.Path).Distinct().Order());
         }
 
         [Fact]

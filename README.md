@@ -13,13 +13,13 @@ It watches the addons' data folders, and every 30 to 45 seconds uploads any file
 | RaidsDB   | `RaidsDB\Instances`   | `<server>/api/instances` (RaidsDB 1.4.0 and newer) |
 | PlayerDB  | `PlayerDB\Demos`      | `<server>/api/demoocr` (screenshots, see [Demo OCR screenshots](#demo-ocr-screenshots)) |
 
-You can sync either addon; leave the other empty. Regrades used to come from the separate RegradeDB addon, now defunct and merged into PlayerDB (see [Upgrading from HomeDB and RegradeDB](#upgrading-from-homedb-and-regradedb)). Houses are no longer uploaded.
+You can sync either addon; leave the other empty. Regrades used to come from the separate RegradeDB addon, now defunct and merged into PlayerDB (see [Upgrading from HomeDB and RegradeDB](#upgrading-from-homedb-and-regradedb)). Houses are no longer uploaded; the server now learns of demolitions from [Demo OCR screenshots](#demo-ocr-screenshots).
 
 ## Requirements
 
 - **Windows** 10 or 11 (64-bit), or **Linux** (64-bit; see [Linux](#linux)). Nothing else to install for the app itself; the .NET runtime is bundled.
 - The PlayerDB or RaidsDB addon (or both) installed in ArcheAge Classic.
-- Your PlayerDB **user ID** and **API key**.
+- Your PlayerDB **user ID** and **API key**, with API access on for your account. Each kind of upload (Players, Regrades, Inventory, Raids, Instances, Demo OCR) also has its own API flag on the site; uploads of a kind whose flag is off are refused.
 
 ## Setup
 
@@ -95,7 +95,7 @@ A tool takes the picture; the app uses the first of these that is installed:
 - Only changed files are uploaded. The app remembers what it has already sent, so restarting it doesn't upload everything again. Changing a folder, the server URL or the user ID does re-upload everything for that addon.
 - Changed files are sent in batches of up to 500.
 - Bookkeeping files (`_count.dat`, `_files.dat`, `empty.keep`) are skipped.
-- Raids are uploaded once the recording is stopped and saved to `Raids`; a raid still being recorded isn't sent. Instances are the same, saved to `Instances`.
+- Raids are uploaded once the recording is stopped and saved to `Raids`; a raid still being recorded isn't sent. Instances are the same, saved to `Instances`. Instances need RaidsDB 1.4.0 or newer: the server turns away instance files saved by an older version.
 - If the server can't be reached or refuses an upload, the app waits longer between attempts (the usual 30 to 45 seconds, doubled for each failure in a row, up to 30 minutes) and logs the error once instead of every time. Each addon retries on its own, so a problem with one doesn't hold up the others.
 - If the server rejects one particular file, that file is skipped until it changes or the app is restarted.
 
@@ -167,7 +167,7 @@ Tick **Upload screenshot on PlayerDB DemoOCR request** to let the PlayerDB addon
 | `request.dat` | addon, then app | `{ status = true }` is a request for a screenshot. The app sets it back to `{ status = false }` once the screenshot is saved; the addon then shows the icon as done and stops writing the location. If it is still `true` after 60 seconds the addon gives up and tells you to enable the sync app. |
 | `location.dat` | addon | The player's sextant location, rewritten every second while a request is open. |
 
-While syncing, the app checks `request.dat` every second. On `status = true` it waits until `location.dat` is up to date (written after the request and in the last 3 seconds), captures the `archeage.exe` window, and checks that the location hasn't changed since. If anything isn't right yet (the game is minimised, the location is stale) it logs why once and tries again every second until the addon gives up.
+While syncing, the app checks `request.dat` every half second. On `status = true` it waits until `location.dat` is up to date (written after the request and in the last 3 seconds), captures the `archeage.exe` window, and checks that the location hasn't changed since. If anything isn't right yet (the game is minimised, the location is stale) it logs why once and tries again every half second until the addon gives up.
 
 The game window must be exactly **2560x1440**; the server only takes that size, so the app never scales it. Otherwise it logs the size it found and waits.
 
@@ -197,9 +197,10 @@ To keep the settings somewhere else (to try the app without touching your real o
 | Message | What to do |
 |---------|------------|
 | *This doesn't look like the PlayerDB/RaidsDB addon folder* | Pick the addon's own folder, the one with `main.lua` in it. If the `Players`, `Regrades`, `Inventory`, `Raids` or `Instances` folder doesn't exist yet, run the game with the addon enabled first so it creates it. |
-| *Server refused every upload … check the user ID, API key and PC clock* | Check your user ID and API key. Uploads are signed with your PC's time, so make sure Windows has the right time (Settings → Time & language → **Sync now**). |
+| *Server refused every upload … check the user ID, API key and PC clock* | Check your user ID and API key, and that the API flag for that kind of upload (e.g. *Instances*) is on for your account; the server gives the same refusal for each. Uploads are signed with your PC's time, so make sure Windows has the right time (Settings → Time & language → **Sync now**). |
 | *Failing (3x) – next try …* | The server is down or unreachable. The app keeps retrying on its own; check the Server URL if it never recovers. |
 | *Regrades: skipped, the PlayerDB addon has no Regrades folder yet* (or Players/Inventory/Raids/Instances) | The addon hasn't saved any of those yet. Play with the addon enabled until it creates the folder, then click **Stop** and **Start**. |
+| *Server rejected … RaidsDB 1.4.0 or newer is needed: update the addon* (or another addon and version) | The files were saved by an addon version older than the server takes. Update the addon; if the old files keep being rejected, use [Clear addon data…](#clearing-addon-data). |
 | No version shown under a folder | The folder isn't an addon folder, or the addon hasn't written a data file with `addon_version` yet. Syncing still works. |
 | *Demo OCR requested but the game window is …, it needs to be 2560x1440* | Set the game to a 2560x1440 window or full screen resolution and click the DemoOCR icon again. |
 | *… the capture came out black (is the game in exclusive full screen? …)* | The app captures the game window without taking over the screen, which shows black while the game is in exclusive full screen. Set the game to windowed or borderless full screen; the request is retried on its own. |

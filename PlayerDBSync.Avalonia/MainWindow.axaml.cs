@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Platform;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Platform.Storage;
@@ -28,7 +29,7 @@ namespace PlayerDBSync
         private string? _updateTag;
 
         // The row each event has while syncing: its bar and its status.
-        private readonly Dictionary<TimedEvent, (ProgressBar Bar, TextBlock Status)> _rows = new();
+        private readonly Dictionary<TimedEvent, (ProgressBar Bar, TextBlock Status, Control[] Cells)> _rows = new();
 
         private readonly (Button Tab, Control Page)[] _pages;
 
@@ -255,7 +256,10 @@ namespace PlayerDBSync
             }
         }
 
-        /// <summary>Shown beside the event's bar (red while failing); dropped once the sync has stopped and the rows have gone.</summary>
+        /// <summary>
+        ///  Shown beside the event's bar (red while failing, when clicking the row says why); dropped once the sync has
+        ///  stopped and the rows have gone.
+        /// </summary>
         private void ShowStatus(TimedEvent ev)
         {
             if (_rows.TryGetValue(ev, out var row))
@@ -263,6 +267,19 @@ namespace PlayerDBSync
                 row.Status.Text = ev.Status;
                 row.Status.Foreground = (Avalonia.Media.IBrush?)Application.Current!.FindResource(ev.Failing ? "PdbBad" : "PdbMuted");
                 row.Bar.Classes.Set("failing", ev.Failing);
+                foreach (var cell in row.Cells)
+                {
+                    cell.Cursor = ev.Failing ? new Cursor(StandardCursorType.Hand) : Cursor.Default;
+                }
+            }
+        }
+
+        /// <summary>A failing row, clicked: why it's failing.</summary>
+        private async Task ShowFailureAsync(TimedEvent ev)
+        {
+            if (ev.Failing)
+            {
+                await Dialogs.ShowAsync(this, "PlayerDB Sync", $"{ev.Label} is failing", ev.FailureDetails());
             }
         }
 
@@ -280,9 +297,10 @@ namespace PlayerDBSync
             foreach (var ev in syncing ? _engine.Scheduled.Where(ev => ev.Enabled) : [])
             {
                 gridSchedule.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-                var label = new TextBlock { Text = ev.Label, Margin = new Thickness(0, 5, 16, 5), VerticalAlignment = VerticalAlignment.Center };
+                // A background, so the whole cell takes the click rather than only its letters.
+                var label = new TextBlock { Text = ev.Label, Margin = new Thickness(0, 5, 16, 5), VerticalAlignment = VerticalAlignment.Center, Background = Avalonia.Media.Brushes.Transparent };
                 var bar = new ProgressBar { Minimum = 0, Maximum = 1, Value = 1, Margin = new Thickness(0, 5, 16, 5), VerticalAlignment = VerticalAlignment.Center };
-                var status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
+                var status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis, Background = Avalonia.Media.Brushes.Transparent };
                 status.Classes.Add("muted");
                 Grid.SetRow(label, row);
                 Grid.SetRow(bar, row);
@@ -292,7 +310,18 @@ namespace PlayerDBSync
                 gridSchedule.Children.Add(label);
                 gridSchedule.Children.Add(bar);
                 gridSchedule.Children.Add(status);
-                _rows[ev] = (bar, status);
+                Control[] cells = [label, bar, status];
+                foreach (var cell in cells)
+                {
+                    cell.PointerReleased += async (_, e) =>
+                    {
+                        if (e.InitialPressMouseButton == MouseButton.Left)
+                        {
+                            await ShowFailureAsync(ev);
+                        }
+                    };
+                }
+                _rows[ev] = (bar, status, cells);
                 // What the event already said while its row wasn't there (its first run starts at once).
                 ShowStatus(ev);
                 row++;
