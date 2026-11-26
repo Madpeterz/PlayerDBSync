@@ -26,6 +26,7 @@ namespace PlayerDBSync.Tests
 
         [Theory]
         [InlineData("/api/players")]
+        [InlineData("/api/houses")]
         [InlineData("/api/regrades")]
         [InlineData("/api/raids")]
         [InlineData("/api/inventory")]
@@ -118,6 +119,28 @@ namespace PlayerDBSync.Tests
             // Not sent again until it changes.
             var requests = _server.Requests.Count;
             Assert.Equal(new SyncResult(0, false, null), await SyncAsync());
+            Assert.Equal(requests, _server.Requests.Count);
+        }
+
+        [Fact]
+        public async Task FilesFromAnOldAddonAreNotTakenForBadCredentials()
+        {
+            // As the site does when every entry is older than the addon's latest release: 422 saying which is needed.
+            _server.Respond = r => r.Blobs.All(b => !Encoding.UTF8.GetString(b).Contains("addon_version"))
+                ? Reply.Text("PlayerDB 2.9.1 or newer is needed: update the addon. These house files are from an older version.", 422)
+                : null;
+            _folder.Write("16a90000_Deutan.dat", "{ ownername = \"Deutan\", }");
+            _folder.Write("16a90000_Lorkj.dat", "{ ownername = \"Lorkj\", }");
+            _folder.Write("16a90000_Shuri.dat", "{ ownername = \"Shuri\", }");
+
+            var result = await SyncAsync("/api/houses");
+
+            Assert.Equal(new SyncResult(0, false, null), result);
+            Assert.Equal(3, _log.Count(l => l.StartsWith("Server rejected 16a90000_") && l.Contains("PlayerDB 2.9.1 or newer is needed")));
+
+            // Not sent again until they change.
+            var requests = _server.Requests.Count;
+            Assert.Equal(new SyncResult(0, false, null), await SyncAsync("/api/houses"));
             Assert.Equal(requests, _server.Requests.Count);
         }
 

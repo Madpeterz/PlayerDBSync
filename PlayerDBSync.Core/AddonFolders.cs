@@ -11,10 +11,10 @@ namespace PlayerDBSync
     /// <summary>Recognising the addons' folders, and checking the settings that name them.</summary>
     internal static class AddonFolders
     {
-        // The PlayerDB addon keeps players, regrades (once RegradeDB) and inventory side by side; each is synced if its
-        // folder is there. (Its Houses folder is no longer uploaded.)
+        // The PlayerDB addon keeps players, houses, regrades (once RegradeDB) and inventory side by side; each is synced
+        // if its folder is there.
         public static readonly string[] PlayerDbDataFolders =
-            [AppSettings.PlayersFolder, AppSettings.RegradesFolder, AppSettings.InventoryFolder];
+            [AppSettings.PlayersFolder, AppSettings.HousesFolder, AppSettings.RegradesFolder, AppSettings.InventoryFolder];
 
         // RaidsDB keeps raids and (from 1.4.0) instances side by side; each is synced if its folder is there.
         public static readonly string[] RaidsDbDataFolders = [AppSettings.RaidsFolder, AppSettings.InstancesFolder];

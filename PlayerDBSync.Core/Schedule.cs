@@ -14,6 +14,9 @@ namespace PlayerDBSync
         // only reads the files' sizes and dates; it sends nothing.
         public static readonly TimeSpan SyncIntervalMin = TimeSpan.FromSeconds(30);
         public static readonly TimeSpan SyncIntervalMax = TimeSpan.FromSeconds(45);
+
+        // The PlayerDB Houses folder is checked more often, every 8 s, so a house seen in game reaches the site's map soon.
+        public static readonly TimeSpan HouseSyncInterval = TimeSpan.FromSeconds(8);
         public static readonly TimeSpan IgnoreListInterval = TimeSpan.FromMinutes(15);
         public static readonly TimeSpan UploadInterval = TimeSpan.FromSeconds(30);
 
@@ -126,10 +129,12 @@ namespace PlayerDBSync
 
     /// <summary>
     ///  One addon data folder pushed to one API endpoint on its own schedule, with its own backoff,
-    ///  so a failing endpoint doesn't hold up the others.
+    ///  so a failing endpoint doesn't hold up the others. It's checked every <see cref="Schedule.SyncIntervalMin"/> to
+    ///  <see cref="Schedule.SyncIntervalMax"/>, unless given an <paramref name="interval"/> of its own.
     /// </summary>
     internal sealed class SyncJob(string name, bool inRaidsDb, string dataFolderName, string endpointPath,
-        Dictionary<string, SyncRecord> syncedFiles, Action<string> log) : TimedEvent(name, Schedule.SyncIntervalMin, Schedule.SyncIntervalMax)
+        Dictionary<string, SyncRecord> syncedFiles, Action<string> log, TimeSpan? interval = null)
+        : TimedEvent(name, interval ?? Schedule.SyncIntervalMin, interval ?? Schedule.SyncIntervalMax)
     {
         public string Name { get; } = name;
 

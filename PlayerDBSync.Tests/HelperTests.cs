@@ -135,6 +135,15 @@ namespace PlayerDBSync.Tests
         }
 
         [Fact]
+        public void HouseFilesGiveThePlayerDbVersion()
+        {
+            Write("Players", "ab.dat", "{ { addon_version = \"2.7.1\", }, }", minutesAgo: 10);
+            Write("Houses", "16a90000_Cx.dat", "{ addon_version = \"2.9.1\", time = 1795679488, ownername = \"Cx\", }", minutesAgo: 0);
+
+            Assert.Equal("2.9.1", AddonVersion.Newest(_folder.Path, AddonFolders.PlayerDbDataFolders));
+        }
+
+        [Fact]
         public void NoneWithoutAVersion()
         {
             Write("Players", "ab.dat", "{ }", minutesAgo: 1);

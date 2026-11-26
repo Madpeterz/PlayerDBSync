@@ -92,6 +92,31 @@ namespace PlayerDBSync.Tests
         }
 
         [Fact]
+        public async Task UploadsPlayerDbHousesEvery8Seconds()
+        {
+            var houses = Path.Combine(_playerDb.Path, "Houses");
+            Directory.CreateDirectory(houses);
+            File.WriteAllText(Path.Combine(houses, "16a90000_Shuri.dat"),
+                "{ addon_version = \"2.9.1\", time = 1795679488, sextent = { deg_long = 13, deg_lat = 19, sec_long = 16, min_lat = 20, longitude = \"W\", latitude = \"S\", sec_lat = 58, min_long = 50, }, ownername = \"Shuri\", buildingname = \"Farts\", }");
+            File.WriteAllText(Path.Combine(houses, "_files.dat"), "{ \"PlayerDB/Houses/16a90000_Shuri.dat\", }");
+            var engine = Engine();
+
+            var (problem, firstRuns) = engine.Start(Input(), false, false);
+            await firstRuns;
+
+            Assert.Null(problem);
+            var request = Assert.Single(_server.Requests, r => r.Path == "/api/houses");
+            Assert.Null(request.Rejection);
+            Assert.Contains("ownername = \"Shuri\"", Assert.Single(request.Blobs.Select(System.Text.Encoding.UTF8.GetString)));
+            Assert.Contains(_log, line => line.StartsWith("Houses: Uploaded"));
+            Assert.Contains(_log, line => line == "Houses: watching " + houses + " (checking every 8 s)");
+            Assert.Single(engine.Settings.HouseSyncedFiles);
+            Assert.Single(engine.Settings.SyncedFiles);
+            var job = Assert.Single(engine.Jobs, j => j.Name == "Houses");
+            Assert.Equal(TimeSpan.FromSeconds(8), job.NextWait());
+        }
+
+        [Fact]
         public async Task UploadsRaidsDbInstancesToTheirOwnEndpoint()
         {
             var instances = Path.Combine(_raidsDb.Path, "Instances");

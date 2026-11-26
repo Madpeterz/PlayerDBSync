@@ -500,7 +500,7 @@ namespace PlayerDBSync
         }
 
         /// <summary>
-        ///  Moves the addons' *.dat files (Players, Regrades, Inventory, Raids, Instances) to the Recycle Bin, so files saved by an
+        ///  Moves the addons' *.dat files (Players, Houses, Regrades, Inventory, Raids, Instances) to the Recycle Bin, so files saved by an
         ///  addon version the server doesn't take stop failing every sync. Their sync records go too.
         /// </summary>
         private async void btnClearData_Click(object? sender, EventArgs e)

@@ -11,7 +11,7 @@ namespace PlayerDBSync
     internal readonly record struct SyncResult(int Uploaded, bool StateChanged, string? Error);
 
     /// <summary>
-    ///  Scans a folder (PlayerDB Players, Regrades or Inventory, or RaidsDB Raids or Instances) for changed *.dat files and pushes them to an API endpoint in batches.
+    ///  Scans a folder (PlayerDB Players, Houses, Regrades or Inventory, or RaidsDB Raids or Instances) for changed *.dat files and pushes them to an API endpoint in batches.
     /// </summary>
     internal sealed class DatUploader
     {
@@ -29,15 +29,17 @@ namespace PlayerDBSync
         // Contents the server rejected as invalid.
         private readonly RejectedFiles _rejected = new();
 
-        // The server answers 418 both for a bad file and for bad credentials/clock. If two files are refused
-        // on their own before anything this scan was accepted, it's almost certainly the credentials.
+        // The server answers 418 both for a bad file and for bad credentials/clock. If two files are refused with it
+        // on their own before anything this scan was accepted, it's almost certainly the credentials. (A 400, 413 or
+        // 422 is about the file itself, e.g. one from an addon older than the server takes, so it doesn't count.)
         private const int SingleRejectsMeaningAuthFailure = 2;
         private bool _anyAcceptedThisScan;
         private readonly List<string> _rejectedThisScan = new();
 
         private sealed record PendingFile(string Name, byte[] Bytes, string Hash, long Size, DateTime LastWriteUtc);
 
-        private enum PushOutcome { Success, Rejected, ServerError }
+        // Refused is a 418, which may be the file or the credentials; Rejected is the file for certain.
+        private enum PushOutcome { Success, Rejected, Refused, ServerError }
 
         public DatUploader(Action<string> log)
         {
@@ -168,10 +170,13 @@ namespace PlayerDBSync
                         : $"Uploaded {files.Count} files ({files.Sum(f => (long)f.Bytes.Length):N0} bytes)");
                     return (files.Count, null);
 
-                case PushOutcome.Rejected when files.Count == 1:
+                case PushOutcome.Rejected or PushOutcome.Refused when files.Count == 1:
                     var bad = files[0];
                     _rejected.Add(bad.Name, bad.Size, bad.LastWriteUtc, bad.Hash);
-                    _rejectedThisScan.Add(bad.Name);
+                    if (outcome == PushOutcome.Refused)
+                    {
+                        _rejectedThisScan.Add(bad.Name);
+                    }
 
                     if (!_anyAcceptedThisScan && _rejectedThisScan.Count >= SingleRejectsMeaningAuthFailure)
                     {
@@ -186,7 +191,7 @@ namespace PlayerDBSync
                     _log($"Server rejected {bad.Name}: {detail} (will retry when the file changes)");
                     return (0, null);
 
-                case PushOutcome.Rejected:
+                case PushOutcome.Rejected or PushOutcome.Refused:
                     int half = files.Count / 2;
                     var first = await UploadAsync(files.Take(half).ToList(), url, credentials, syncedFiles, ct);
                     if (first.Error != null)
@@ -220,8 +225,11 @@ namespace PlayerDBSync
 
                 // Possibly a problem with the submitted data (the server answers 418 for any refusal, bad
                 // credentials included; UploadAsync tells those apart). Anything else (404, 429, 5xx) affects every file.
-                var dataProblem = (int)response.StatusCode == 418
-                    || response.StatusCode is HttpStatusCode.BadRequest
+                if ((int)response.StatusCode == 418)
+                {
+                    return (PushOutcome.Refused, detail);
+                }
+                var dataProblem = response.StatusCode is HttpStatusCode.BadRequest
                     or HttpStatusCode.RequestEntityTooLarge
                     or HttpStatusCode.UnprocessableEntity;
                 return (dataProblem ? PushOutcome.Rejected : PushOutcome.ServerError, detail);

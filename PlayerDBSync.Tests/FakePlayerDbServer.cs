@@ -76,6 +76,7 @@ namespace PlayerDBSync.Tests
             ["/api/instances"] = EndpointKind.Upload,
             ["/api/inventory"] = EndpointKind.Upload,
             ["/api/demoocr"] = EndpointKind.DemoOcr,
+            ["/api/houses"] = EndpointKind.Upload,
         };
 
         // RaidImageStore::NAME_PATTERN, and its number of up to 6 digits
