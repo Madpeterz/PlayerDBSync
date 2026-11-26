@@ -536,6 +536,80 @@ namespace PlayerDBSync
     }
 
     /// <summary>
+    ///  A pick-one list in the theme: the page colour with a 1px border (the accent while it has the focus) and a
+    ///  chevron, its items drawn in the text colour, lit on hover. The items are shown by their ToString.
+    /// </summary>
+    internal sealed class ThemedComboBox : ComboBox
+    {
+        private const int WM_PAINT = 0x000F;
+        private const int ButtonWidth = 20;
+
+        public ThemedComboBox()
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList;
+            FlatStyle = FlatStyle.Flat;
+            DrawMode = DrawMode.OwnerDrawFixed;
+            BackColor = Theme.Background;
+            ForeColor = Theme.Text;
+            Cursor = Cursors.Hand;
+        }
+
+        protected override void OnDrawItem(DrawItemEventArgs e)
+        {
+            if (e.Index < 0)
+            {
+                return;
+            }
+            // The closed box draws its item with ComboBoxEdit; the open list lights the item under the mouse.
+            var lit = (e.State & DrawItemState.Selected) != 0 && (e.State & DrawItemState.ComboBoxEdit) == 0;
+            using (var back = new SolidBrush(lit ? Theme.Hover : BackColor))
+            {
+                e.Graphics.FillRectangle(back, e.Bounds);
+            }
+            var text = new Rectangle(e.Bounds.X + 4, e.Bounds.Y, e.Bounds.Width - 4, e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, GetItemText(Items[e.Index]), Font, text, Enabled ? ForeColor : Theme.Muted,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+        }
+
+        protected override void OnGotFocus(EventArgs e)
+        {
+            base.OnGotFocus(e);
+            Invalidate();
+        }
+
+        protected override void OnLostFocus(EventArgs e)
+        {
+            base.OnLostFocus(e);
+            Invalidate();
+        }
+
+        // The flat style's own border and arrow are drawn in system colours, so they are painted over.
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+            if (m.Msg != WM_PAINT)
+            {
+                return;
+            }
+            using var g = Graphics.FromHwnd(Handle);
+            var button = new Rectangle(Width - ButtonWidth - 1, 1, ButtonWidth, Height - 2);
+            using (var back = new SolidBrush(BackColor))
+            {
+                g.FillRectangle(back, button);
+            }
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var pen = new Pen(Theme.Muted, 1.5f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+            {
+                float cx = button.Left + button.Width / 2f, cy = button.Top + button.Height / 2f;
+                g.DrawLines(pen, new[] { new PointF(cx - 4, cy - 2), new PointF(cx, cy + 2), new PointF(cx + 4, cy - 2) });
+            }
+            g.SmoothingMode = SmoothingMode.None;
+            using var border = new Pen(Focused || DroppedDown ? Theme.Accent : Theme.Border);
+            g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
+        }
+    }
+
+    /// <summary>
     ///  A text box framed as the site's inputs: the page colour, a 1px rounded border, in the accent while it has the
     ///  focus. It holds one borderless <see cref="TextBox"/>, which it lays out and colours.
     /// </summary>

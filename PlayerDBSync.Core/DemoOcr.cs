@@ -29,6 +29,12 @@ namespace PlayerDBSync
         }
     }
 
+    /// <summary>A game screen size Demo OCR screenshots can be taken at, written as the settings and the dropdown show it: 2560x1440.</summary>
+    internal sealed record ScreenSize(int Width, int Height)
+    {
+        public override string ToString() => $"{Width}x{Height}";
+    }
+
     /// <summary>
     ///  Demolition notice screenshots requested by the PlayerDB addon (its DemoOCR icon). The addon hands over
     ///  through the Demos folder of its addon folder:
@@ -45,9 +51,17 @@ namespace PlayerDBSync
         public const string RequestFile = "request.dat";
         public const string LocationFile = "location.dat";
 
-        // The server takes only a WebP of exactly this size, up to this many bytes.
-        public const int Width = 2560;
-        public const int Height = 1440;
+        // The screen sizes a screenshot can be taken at, picked under Screenshots; the first is the default. The server
+        // reads text off the picture at set places, so it is never scaled: the game must be at the size picked. (The
+        // site only takes 2560x1440 for now; a screenshot of another size is refused there until it takes that too.)
+        public static readonly IReadOnlyList<ScreenSize> Sizes = [new(2560, 1440), new(1920, 1080), new(3440, 1440)];
+        public static ScreenSize DefaultSize => Sizes[0];
+
+        /// <summary>The size <paramref name="text"/> names (as <see cref="ScreenSize.ToString"/> writes it), or the default if it names none of <see cref="Sizes"/>.</summary>
+        public static ScreenSize SizeFrom(string? text) =>
+            Sizes.FirstOrDefault(s => string.Equals(s.ToString(), text?.Trim(), StringComparison.OrdinalIgnoreCase)) ?? DefaultSize;
+
+        // The server takes a WebP of up to this many bytes.
         public const long MaxFileBytes = 10 * 1024 * 1024;
 
         // The addon writes the location every second; older than this and it has stopped.
@@ -170,7 +184,7 @@ namespace PlayerDBSync
         }
 
         /// <summary>
-        ///  Saves <paramref name="image"/>, which must be <see cref="Width"/> x <see cref="Height"/>, as a WebP of up to
+        ///  Saves <paramref name="image"/>, which must be the size picked (one of <see cref="Sizes"/>), as a WebP of up to
         ///  <see cref="MaxFileBytes"/>. Never scaled: the server reads text off it.
         /// </summary>
         public static void SaveWebp(SKBitmap image, string path) => GameCapture.SaveWebp(image, path, Encode);

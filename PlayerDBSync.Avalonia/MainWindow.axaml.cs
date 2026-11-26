@@ -81,6 +81,8 @@ namespace PlayerDBSync
             txtRaidFolder.TextChanged += async (_, _) => await RefreshVersionsAsync();
             chkRaid.IsCheckedChanged += (_, _) => RaidScreenshotsChanged();
             chkDemo.IsCheckedChanged += (_, _) => DemoOcrChanged();
+            cboDemoSize.ItemsSource = DemoOcr.Sizes;
+            cboDemoSize.SelectionChanged += (_, _) => DemoOcrSizeChanged();
             lnkSite.Click += (_, _) => OpenSite();
             lnkReleases.Click += (_, _) => OpenUrl($"{AppInfo.RepositoryUrl}/releases/latest");
             lnkReadme.Click += (_, _) => OpenUrl($"{AppInfo.RepositoryUrl}#readme");
@@ -116,6 +118,7 @@ namespace PlayerDBSync
             txtApiKey.Text = _settings.GetApiKey();
             chkRaid.IsChecked = _settings.RaidScreenshots;
             chkDemo.IsChecked = _settings.DemoOcrScreenshots;
+            cboDemoSize.SelectedItem = DemoOcr.SizeFrom(_settings.DemoOcrSize);
         }
 
         // True while the screen list is rebuilt, so that isn't taken for the user picking one.
@@ -407,6 +410,17 @@ namespace PlayerDBSync
             {
                 _engine.NoteRaidScreenshotsSwitchedOn();
             }
+        }
+
+        private void DemoOcrSizeChanged()
+        {
+            if (cboDemoSize.SelectedItem is not ScreenSize size || size == _engine.DemoOcrSize)
+            {
+                return;
+            }
+            _engine.DemoOcrSize = size;
+            SaveSettings();
+            Log($"Demo OCR: screenshots are now taken at {size}; set the game to that size");
         }
 
         private void DemoOcrChanged()

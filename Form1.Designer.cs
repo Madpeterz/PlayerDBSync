@@ -68,6 +68,8 @@
             chkRaidScreenshots = new ThemedCheckBox();
             btnOpenScreenshots = new ThemedButton();
             chkDemoOcr = new ThemedCheckBox();
+            lblDemoOcrSize = new Label();
+            cboDemoOcrSize = new ThemedComboBox();
             btnClearData = new ThemedButton();
             pnlRunning = new BackdropPanel();
             cardSchedule = new CardPanel();
@@ -473,6 +475,8 @@
             cardScreenshots.Controls.Add(chkRaidScreenshots);
             cardScreenshots.Controls.Add(btnOpenScreenshots);
             cardScreenshots.Controls.Add(chkDemoOcr);
+            cardScreenshots.Controls.Add(lblDemoOcrSize);
+            cardScreenshots.Controls.Add(cboDemoOcrSize);
             cardScreenshots.Location = new Point(16, 368);
             cardScreenshots.Name = "cardScreenshots";
             cardScreenshots.Size = new Size(648, 108);
@@ -517,6 +521,26 @@
             chkDemoOcr.TabIndex = 3;
             chkDemoOcr.Text = "Upload screenshot on PlayerDB DemoOCR request";
             chkDemoOcr.CheckedChanged += chkDemoOcr_CheckedChanged;
+            //
+            // lblDemoOcrSize
+            //
+            lblDemoOcrSize.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            lblDemoOcrSize.ForeColor = Color.FromArgb(154, 161, 173);
+            lblDemoOcrSize.Location = new Point(392, 76);
+            lblDemoOcrSize.Name = "lblDemoOcrSize";
+            lblDemoOcrSize.Size = new Size(122, 17);
+            lblDemoOcrSize.TabIndex = 4;
+            lblDemoOcrSize.Text = "Game screen size";
+            lblDemoOcrSize.TextAlign = ContentAlignment.MiddleRight;
+            //
+            // cboDemoOcrSize
+            //
+            cboDemoOcrSize.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            cboDemoOcrSize.Location = new Point(522, 72);
+            cboDemoOcrSize.Name = "cboDemoOcrSize";
+            cboDemoOcrSize.Size = new Size(110, 24);
+            cboDemoOcrSize.TabIndex = 5;
+            cboDemoOcrSize.SelectedIndexChanged += cboDemoOcrSize_SelectedIndexChanged;
             //
             // btnClearData
             //
@@ -925,6 +949,8 @@
         private ThemedCheckBox chkRaidScreenshots;
         private ThemedButton btnOpenScreenshots;
         private ThemedCheckBox chkDemoOcr;
+        private Label lblDemoOcrSize;
+        private ThemedComboBox cboDemoOcrSize;
         private ThemedButton btnClearData;
         private BackdropPanel pnlRunning;
         private CardPanel cardSchedule;

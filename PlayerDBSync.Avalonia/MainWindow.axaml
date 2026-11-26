@@ -69,7 +69,11 @@
               <CheckBox x:Name="chkRaid" Content="Save screenshot on RaidsDB request" />
               <Button x:Name="btnOpenShots" Grid.Column="1" Content="Open folder" />
             </Grid>
-            <CheckBox x:Name="chkDemo" Content="Upload screenshot on PlayerDB DemoOCR request" />
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <CheckBox x:Name="chkDemo" Content="Upload screenshot on PlayerDB DemoOCR request" />
+              <TextBlock Grid.Column="1" Classes="muted" Text="Game screen size" VerticalAlignment="Center" />
+              <ComboBox x:Name="cboDemoSize" Grid.Column="2" MinWidth="120" />
+            </Grid>
             <!-- Linux only: the game's window can't be found reliably there, so the user picks what to capture. -->
             <Grid x:Name="gridCaptureScreen" ColumnDefinitions="130,*" ColumnSpacing="8" IsVisible="False">
               <TextBlock Classes="muted" Text="Capture" VerticalAlignment="Center" />

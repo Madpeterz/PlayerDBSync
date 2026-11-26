@@ -50,8 +50,9 @@ namespace PlayerDBSync
 
         // Demo OCR screenshots are taken on their own thread, started with the sync and ended by its cancellation.
         private Thread? _demoOcrThread;
-        // Mirrors the checkbox so the Demo OCR thread can read it.
+        // Mirror the checkbox and the size dropdown so the Demo OCR thread can read them.
         private volatile bool _demoOcrOn;
+        private volatile ScreenSize _demoOcrSize;
 
         // Snapshot of the server and credentials taken when sync starts, so edits to the boxes don't affect a running sync.
         private string _baseUrl = "";
@@ -75,6 +76,7 @@ namespace PlayerDBSync
             _ui = ui ?? SynchronizationContext.Current;
             _screenshotsOn = settings.RaidScreenshots;
             _demoOcrOn = settings.DemoOcrScreenshots;
+            _demoOcrSize = DemoOcr.SizeFrom(settings.DemoOcrSize);
 
             _players = new SyncJob("Players", inRaidsDb: false, AppSettings.PlayersFolder, "/api/players", settings.SyncedFiles, Log);
             _houses = new SyncJob("Houses", inRaidsDb: false, AppSettings.HousesFolder, "/api/houses", settings.HouseSyncedFiles, Log, Schedule.HouseSyncInterval);
@@ -127,6 +129,20 @@ namespace PlayerDBSync
         {
             get => _demoOcrOn;
             set => _demoOcrOn = value;
+        }
+
+        /// <summary>
+        ///  The game's screen size Demo OCR screenshots are taken at; one of another size is turned away and the request
+        ///  retried. Taken from the next request on, while syncing too. Put in the settings, to be saved with <see cref="SaveSettings"/>.
+        /// </summary>
+        public ScreenSize DemoOcrSize
+        {
+            get => _demoOcrSize;
+            set
+            {
+                _demoOcrSize = value;
+                _settings.DemoOcrSize = value.ToString();
+            }
         }
 
         /// <summary>Puts the settings as typed in the settings, to be saved with <see cref="SaveSettings"/>.</summary>
@@ -646,9 +662,10 @@ namespace PlayerDBSync
                             {
                                 // The location must still be the one the picture was taken at.
                                 var after = DemoOcr.ReadLocation(demosFolder, out var stillUpToDate);
-                                if (image.Width != DemoOcr.Width || image.Height != DemoOcr.Height)
+                                var size = _demoOcrSize;
+                                if (image.Width != size.Width || image.Height != size.Height)
                                 {
-                                    error = $"Demo OCR requested but the game window is {image.Width}x{image.Height}, it needs to be {DemoOcr.Width}x{DemoOcr.Height} – retrying";
+                                    error = $"Demo OCR requested but the game window is {image.Width}x{image.Height}, it needs to be {size} (the size picked under Screenshots) – retrying";
                                 }
                                 else if (after != location || !stillUpToDate)
                                 {

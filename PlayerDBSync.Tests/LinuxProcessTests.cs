@@ -78,7 +78,7 @@ namespace PlayerDBSync.Tests
                 Assert.Null(error);
                 using (image)
                 {
-                    Assert.Equal((DemoOcr.Width, DemoOcr.Height), (image!.Width, image.Height));
+                    Assert.Equal((DemoOcr.DefaultSize.Width, DemoOcr.DefaultSize.Height), (image!.Width, image.Height));
                     Assert.Equal(new SKColor(30, 90, 160), image.GetPixel(1000, 700));
                 }
             }

@@ -102,6 +102,8 @@ namespace PlayerDBSync
             txtApiKey.Text = _settings.GetApiKey();
             chkRaidScreenshots.Checked = _settings.RaidScreenshots;
             chkDemoOcr.Checked = _settings.DemoOcrScreenshots;
+            cboDemoOcrSize.Items.AddRange([.. DemoOcr.Sizes]);
+            cboDemoOcrSize.SelectedItem = DemoOcr.SizeFrom(_settings.DemoOcrSize);
         }
 
         private async void Form1_Shown(object? sender, EventArgs e)
@@ -483,6 +485,17 @@ namespace PlayerDBSync
             {
                 _engine.NoteDemoOcrSwitchedOn();
             }
+        }
+
+        private void cboDemoOcrSize_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (cboDemoOcrSize.SelectedItem is not ScreenSize size || size == _engine.DemoOcrSize)
+            {
+                return;
+            }
+            _engine.DemoOcrSize = size;
+            SaveSettings();
+            Log($"Demo OCR: screenshots are now taken at {size}; set the game to that size");
         }
 
         private void chkRaidScreenshots_CheckedChanged(object? sender, EventArgs e)

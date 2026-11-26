@@ -272,7 +272,7 @@ namespace PlayerDBSync.Tests
             // Written after the request and kept fresh, as the addon does while a request is open.
             File.WriteAllText(Path.Combine(demos, "location.dat"),
                 "{ location = { deg_lat = 16, min_lat = 10, sec_lat = 20, latitude = \"S\", deg_long = 9, min_long = 41, sec_long = 2, longitude = \"W\", }, }");
-            var engine = Engine(new FakeCapture(DemoOcr.Width, DemoOcr.Height));
+            var engine = Engine(new FakeCapture(DemoOcr.DefaultSize.Width, DemoOcr.DefaultSize.Height));
 
             var (_, firstRuns) = engine.Start(Input(), raidScreenshots: false, demoOcrScreenshots: true);
             await firstRuns;
@@ -283,6 +283,52 @@ namespace PlayerDBSync.Tests
             Assert.True(await WaitFor(() => _server.Requests.Any(r => r.Path == DemoOcrUploader.EndpointPath), 30),
                 "the screenshot was never uploaded:\n" + string.Join('\n', _log));
             Assert.Contains(_log, line => line.Contains("16° 10' 20\" S, 9° 41' 2\" W"));
+        }
+
+        [Fact]
+        public async Task TakesDemoOcrScreenshotsAtTheSizePicked()
+        {
+            var demos = Path.Combine(_playerDb.Path, "Demos");
+            Directory.CreateDirectory(demos);
+            File.WriteAllText(Path.Combine(demos, "request.dat"), "{ status = true, }");
+            File.WriteAllText(Path.Combine(demos, "location.dat"),
+                "{ location = { deg_lat = 16, min_lat = 10, sec_lat = 20, latitude = \"S\", deg_long = 9, min_long = 41, sec_long = 2, longitude = \"W\", }, }");
+            var capture = new FakeCapture(1920, 1080);
+            var engine = Engine(capture);
+            engine.DemoOcrSize = new ScreenSize(3440, 1440);
+            Assert.Equal("3440x1440", engine.Settings.DemoOcrSize);
+
+            var (_, firstRuns) = engine.Start(Input(), raidScreenshots: false, demoOcrScreenshots: true);
+            await firstRuns;
+            using var keepFresh = new Timer(_ => File.SetLastWriteTimeUtc(Path.Combine(demos, "location.dat"), DateTime.UtcNow), null, 0, 500);
+
+            // A 1920x1080 game while 3440x1440 is picked: turned away, and the request kept.
+            Assert.True(await WaitFor(() => capture.Captures >= 2), "the capture wasn't retried");
+            Assert.Single(_log, line => line.Contains("the game window is 1920x1080, it needs to be 3440x1440"));
+            Assert.Contains("status = true", File.ReadAllText(Path.Combine(demos, "request.dat")));
+
+            // Picking 1920x1080 while syncing takes it from the next try.
+            engine.DemoOcrSize = DemoOcr.SizeFrom("1920x1080");
+            Assert.True(await WaitFor(() => File.ReadAllText(Path.Combine(demos, "request.dat")).Contains("status = false")),
+                "the request was never answered:\n" + string.Join('\n', _log));
+            Assert.True(await WaitFor(() => _server.Requests.Any(r => r.Path == DemoOcrUploader.EndpointPath), 30),
+                "the screenshot was never uploaded:\n" + string.Join('\n', _log));
+            var request = _server.Requests.Last(r => r.Path == DemoOcrUploader.EndpointPath);
+            using var sent = SKBitmap.Decode(Assert.Single(request.Blobs));
+            Assert.Equal((1920, 1080), (sent.Width, sent.Height));
+        }
+
+        [Theory]
+        [InlineData("2560x1440", 2560, 1440)]
+        [InlineData("1920x1080", 1920, 1080)]
+        [InlineData(" 3440X1440 ", 3440, 1440)]
+        [InlineData("1280x720", 2560, 1440)]
+        [InlineData("", 2560, 1440)]
+        [InlineData(null, 2560, 1440)]
+        public void ADemoOcrSizeNotOfferedIsTheDefault(string? text, int width, int height)
+        {
+            Assert.Equal(new ScreenSize(width, height), DemoOcr.SizeFrom(text));
+            Assert.Equal(DemoOcr.DefaultSize.ToString(), new AppSettings().DemoOcrSize);
         }
 
         [Fact]

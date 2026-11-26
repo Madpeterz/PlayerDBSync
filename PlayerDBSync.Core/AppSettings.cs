@@ -48,6 +48,9 @@ namespace PlayerDBSync
         /// <summary>Capture the game window when the PlayerDB addon sets Demos\request.dat, and upload it for Demo OCR.</summary>
         public bool DemoOcrScreenshots { get; set; }
 
+        /// <summary>The game's screen size Demo OCR screenshots are taken at, one of <see cref="DemoOcr.Sizes"/> (e.g. "2560x1440").</summary>
+        public string DemoOcrSize { get; set; } = DemoOcr.DefaultSize.ToString();
+
         /// <summary>Linux only: the screen to take screenshots of; null is the whole desktop. (Windows captures the game's window.)</summary>
         public CaptureArea? CaptureArea { get; set; }
 
