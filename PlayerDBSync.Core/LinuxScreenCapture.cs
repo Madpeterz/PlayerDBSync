@@ -1,11 +1,42 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
 using SkiaSharp;
 
 namespace PlayerDBSync
 {
-    /// <summary>A rectangle of the desktop, in pixels from its top left corner: one screen, as the user picked it.</summary>
+    /// <summary>A rectangle of the desktop, in pixels from its top left corner: one screen, or a box the user placed.</summary>
     internal sealed record CaptureArea(int X, int Y, int Width, int Height)
     {
+        [JsonIgnore] public int Right => X + Width;
+        [JsonIgnore] public int Bottom => Y + Height;
+
+        /// <summary>Whether all of <paramref name="other"/> is inside this.</summary>
+        public bool Contains(CaptureArea other) =>
+            other.X >= X && other.Y >= Y && other.Right <= Right && other.Bottom <= Bottom;
+
+        /// <summary>The smallest rectangle holding all of <paramref name="areas"/> (the desktop, for the screens); null if there are none.</summary>
+        public static CaptureArea? Around(IEnumerable<CaptureArea> areas)
+        {
+            CaptureArea? around = null;
+            foreach (var area in areas)
+            {
+                around = around == null
+                    ? area
+                    : FromEdges(Math.Min(around.X, area.X), Math.Min(around.Y, area.Y), Math.Max(around.Right, area.Right), Math.Max(around.Bottom, area.Bottom));
+            }
+            return around;
+        }
+
+        /// <summary>A <paramref name="width"/> by <paramref name="height"/> box in the middle of <paramref name="screen"/>, made smaller if it doesn't fit.</summary>
+        public static CaptureArea CentredIn(CaptureArea screen, int width, int height)
+        {
+            width = Math.Clamp(width, 1, screen.Width);
+            height = Math.Clamp(height, 1, screen.Height);
+            return new CaptureArea(screen.X + (screen.Width - width) / 2, screen.Y + (screen.Height - height) / 2, width, height);
+        }
+
+        private static CaptureArea FromEdges(int left, int top, int right, int bottom) => new(left, top, right - left, bottom - top);
+
         /// <summary>As <c>WxH+X+Y</c>, the geometry maim and ImageMagick take.</summary>
         public string Geometry => string.Create(CultureInfo.InvariantCulture, $"{Width}x{Height}+{X}+{Y}");
 
@@ -44,6 +75,9 @@ namespace PlayerDBSync
             _environment = environment ?? Environment.GetEnvironmentVariable;
         }
 
+        /// <summary>What the last <see cref="Capture"/> took a picture of; null is the whole desktop.</summary>
+        public CaptureArea? LastArea { get; private set; }
+
         public (SKBitmap? Image, string? Error) Capture()
         {
             var wayland = !string.IsNullOrEmpty(_environment("WAYLAND_DISPLAY"));
@@ -53,6 +87,7 @@ namespace PlayerDBSync
             }
 
             var area = _area();
+            LastArea = area;
             string? lastFailure = null;
             // On Wayland grim goes first; maim and import can only see what XWayland shows there, which is often nothing.
             foreach (var (program, waylandOnly, arguments) in CaptureTools.OrderBy(tool => tool.Wayland == wayland ? 0 : 1))

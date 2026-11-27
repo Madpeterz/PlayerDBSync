@@ -75,9 +75,10 @@
               <ComboBox x:Name="cboDemoSize" Grid.Column="2" MinWidth="120" />
             </Grid>
             <!-- Linux only: the game's window can't be found reliably there, so the user picks what to capture. -->
-            <Grid x:Name="gridCaptureScreen" ColumnDefinitions="130,*" ColumnSpacing="8" IsVisible="False">
+            <Grid x:Name="gridCaptureScreen" ColumnDefinitions="130,*,Auto" ColumnSpacing="8" IsVisible="False">
               <TextBlock Classes="muted" Text="Capture" VerticalAlignment="Center" />
               <ComboBox x:Name="cboScreen" Grid.Column="1" HorizontalAlignment="Stretch" />
+              <Button x:Name="btnPlaceBox" Grid.Column="2" Content="Place box…" />
             </Grid>
             <TextBlock x:Name="lblCaptureNote" Classes="muted" TextWrapping="Wrap" IsVisible="False" />
           </StackPanel>

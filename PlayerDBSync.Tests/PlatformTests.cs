@@ -132,6 +132,26 @@ namespace PlayerDBSync.Tests
         {
             var json = System.Text.Json.JsonSerializer.Serialize(new AppSettings { CaptureArea = new CaptureArea(1, 2, 3, 4) });
             Assert.Equal(new CaptureArea(1, 2, 3, 4), System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json)!.CaptureArea);
+            Assert.DoesNotContain("Right", json);
+        }
+
+        [Fact]
+        public void APlacedBoxIsKeptWhileItIsOnTheDesktop()
+        {
+            var desktop = CaptureArea.Around([new CaptureArea(0, 0, 1920, 1080), new CaptureArea(1920, 0, 3440, 1440)])!;
+            Assert.Equal(new CaptureArea(0, 0, 5360, 1440), desktop);
+            Assert.True(desktop.Contains(new CaptureArea(2000, 0, 2560, 1440)));
+            Assert.True(desktop.Contains(desktop));
+            Assert.False(desktop.Contains(new CaptureArea(4000, 0, 2560, 1440)));
+            Assert.Null(CaptureArea.Around([]));
+        }
+
+        [Fact]
+        public void ANewBoxIsCentredOnTheScreenAndFitsIt()
+        {
+            var screen = new CaptureArea(1920, 0, 3440, 1440);
+            Assert.Equal(new CaptureArea(2360, 0, 2560, 1440), CaptureArea.CentredIn(screen, 2560, 1440));
+            Assert.Equal(new CaptureArea(0, 0, 1920, 1080), CaptureArea.CentredIn(new CaptureArea(0, 0, 1920, 1080), 2560, 1440));
         }
     }
 

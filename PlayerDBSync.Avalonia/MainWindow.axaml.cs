@@ -62,9 +62,10 @@ namespace PlayerDBSync
             if (!OperatingSystem.IsWindows())
             {
                 gridCaptureScreen.IsVisible = true;
-                lblCaptureNote.Text = "Pick the screen the game is on (or the whole desktop). Screenshots need maim or ImageMagick (import) installed, or grim on Wayland.";
+                lblCaptureNote.Text = "Pick the screen the game is on, or Place box… to drag a box over the game. Screenshots need maim or ImageMagick (import) installed, or grim on Wayland.";
                 lblCaptureNote.IsVisible = true;
                 cboScreen.SelectionChanged += (_, _) => CaptureScreenChanged();
+                btnPlaceBox.Click += async (_, _) => await PlaceCaptureBoxAsync();
                 Opened += (_, _) => FillScreens();
                 if (Screens is { } screens)
                 {
@@ -124,29 +125,81 @@ namespace PlayerDBSync
         // True while the screen list is rebuilt, so that isn't taken for the user picking one.
         private bool _fillingScreens;
 
-        /// <summary>Lists the whole desktop and each screen, with the one in the settings picked (the whole desktop if that screen has gone).</summary>
+        /// <summary>
+        ///  Lists the whole desktop, each screen and the box placed (if one is), with the one in the settings picked: the
+        ///  whole desktop if that screen has gone, or the box is no longer on the desktop.
+        /// </summary>
         private void FillScreens()
         {
             _fillingScreens = true;
             try
             {
                 var items = new List<ComboBoxItem> { new() { Content = "Whole desktop (all screens)", Tag = null } };
-                var number = 0;
-                foreach (var screen in Screens?.All ?? [])
+                var screens = (Screens?.All ?? []).Select(screen => (Area: ToArea(screen.Bounds), screen.IsPrimary)).ToList();
+                for (var i = 0; i < screens.Count; i++)
                 {
-                    number++;
-                    var area = new CaptureArea(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height);
-                    items.Add(new ComboBoxItem { Content = $"Screen {number}: {area}" + (screen.IsPrimary ? " (primary)" : ""), Tag = area });
+                    var (area, primary) = screens[i];
+                    items.Add(new ComboBoxItem { Content = $"Screen {i + 1}: {area}" + (primary ? " (primary)" : ""), Tag = area });
+                }
+                // A box placed stays while it's on the desktop (or while the screens aren't known yet).
+                var desktop = CaptureArea.Around(screens.Select(screen => screen.Area));
+                if (_settings.CaptureArea is { } saved && !screens.Any(screen => screen.Area == saved) && desktop?.Contains(saved) != false)
+                {
+                    items.Add(new ComboBoxItem { Content = $"Box placed: {saved}", Tag = saved });
                 }
                 cboScreen.ItemsSource = items;
                 var picked = items.FirstOrDefault(item => Equals(item.Tag, _settings.CaptureArea));
                 // A screen that has gone (or been moved) is no longer meant: the whole desktop is what gets captured.
-                _settings.CaptureArea = picked?.Tag as CaptureArea;
+                // But no screens at all is the desktop not being known yet (or for a moment), not every screen going:
+                // keep the one picked rather than lose it.
+                if (screens.Count > 0)
+                {
+                    _settings.CaptureArea = picked?.Tag as CaptureArea;
+                }
                 cboScreen.SelectedItem = picked ?? items[0];
             }
             finally
             {
                 _fillingScreens = false;
+            }
+        }
+
+        private static CaptureArea ToArea(PixelRect bounds) => new(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+
+        /// <summary>Shows the box to drag over the game, and captures what's inside it from then on if the user says so.</summary>
+        private async Task PlaceCaptureBoxAsync()
+        {
+            var gameSize = _engine.DemoOcrSize;
+            // Where it was last, or else the Game screen size in the middle of the screen this window is on.
+            var start = _settings.CaptureArea;
+            if (start == null)
+            {
+                var screen = (Screens?.ScreenFromWindow(this) ?? Screens?.Primary)?.Bounds ?? new PixelRect(0, 0, gameSize.Width, gameSize.Height);
+                start = CaptureArea.CentredIn(ToArea(screen), gameSize.Width, gameSize.Height);
+            }
+
+            btnPlaceBox.IsEnabled = false;
+            CaptureArea? placed;
+            try
+            {
+                placed = await CaptureBox.PlaceAsync(start, gameSize, RenderScaling);
+            }
+            finally
+            {
+                btnPlaceBox.IsEnabled = true;
+            }
+            if (placed == null)
+            {
+                return;
+            }
+
+            _settings.CaptureArea = placed;
+            SaveSettings();
+            FillScreens();
+            Log($"Capture: screenshots are now taken of the box placed: {placed}");
+            if (chkDemo.IsChecked == true && (placed.Width, placed.Height) != (gameSize.Width, gameSize.Height))
+            {
+                Log($"Capture: Demo OCR needs {gameSize} and the box is {placed.Width}x{placed.Height}; use Make it {gameSize} in the box, or pick another Game screen size");
             }
         }
 
