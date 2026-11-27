@@ -665,7 +665,11 @@ namespace PlayerDBSync
                                 var size = _demoOcrSize;
                                 if (image.Width != size.Width || image.Height != size.Height)
                                 {
-                                    error = $"Demo OCR requested but the game window is {image.Width}x{image.Height}, it needs to be {size} (the size picked under Screenshots) – retrying";
+                                    // Linux takes the whole screen picked under Capture, not the game's window, so
+                                    // there it is the screen's size that's wrong: running the game smaller won't help.
+                                    error = _capture is LinuxScreenCapture
+                                        ? $"Demo OCR requested but the screen picked under Capture is {image.Width}x{image.Height}, it needs to be {size} (the Game screen size picked). On Linux the whole screen is captured, not the game window, so pick the size the screen is, or a screen of {size} – retrying"
+                                        : $"Demo OCR requested but the game window is {image.Width}x{image.Height}, it needs to be {size} (the size picked under Screenshots) – retrying";
                                 }
                                 else if (after != location || !stillUpToDate)
                                 {

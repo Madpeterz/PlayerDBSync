@@ -318,6 +318,36 @@ namespace PlayerDBSync.Tests
             Assert.Equal((1920, 1080), (sent.Width, sent.Height));
         }
 
+        [Fact]
+        public async Task OnLinuxAWrongSizeBlamesTheScreenNotTheGame()
+        {
+            var demos = Path.Combine(_playerDb.Path, "Demos");
+            Directory.CreateDirectory(demos);
+            File.WriteAllText(Path.Combine(demos, "request.dat"), "{ status = true, }");
+            File.WriteAllText(Path.Combine(demos, "location.dat"),
+                "{ location = { deg_lat = 16, min_lat = 10, sec_lat = 20, latitude = \"S\", deg_long = 9, min_long = 41, sec_long = 2, longitude = \"W\", }, }");
+            // An ultrawide screen picked under Capture, while the default 2560x1440 is the size needed.
+            byte[] screen;
+            using (var bitmap = new SKBitmap(3440, 1440))
+            {
+                bitmap.Erase(new SKColor(40, 90, 150));
+                using var data = SKImage.FromBitmap(bitmap).Encode(SKEncodedImageFormat.Png, 100);
+                screen = data.ToArray();
+            }
+            var runner = new FakeRunner((program, _) => program == "maim" ? FakeRunner.Ok(screen) : null);
+            var engine = Engine(new LinuxScreenCapture(runner, () => new CaptureArea(1920, 0, 3440, 1440), name => name == "DISPLAY" ? ":0" : null));
+
+            var (_, firstRuns) = engine.Start(Input(), raidScreenshots: false, demoOcrScreenshots: true);
+            await firstRuns;
+            using var keepFresh = new Timer(_ => File.SetLastWriteTimeUtc(Path.Combine(demos, "location.dat"), DateTime.UtcNow), null, 0, 500);
+
+            Assert.True(await WaitFor(() => _log.Any(line => line.Contains("Demo OCR requested but"))), "nothing was logged:\n" + string.Join('\n', _log));
+            var line = Assert.Single(_log, line => line.Contains("Demo OCR requested but"));
+            Assert.Contains("the screen picked under Capture is 3440x1440, it needs to be 2560x1440", line);
+            Assert.Contains("the whole screen is captured, not the game window", line);
+            Assert.Contains("status = true", File.ReadAllText(Path.Combine(demos, "request.dat")));
+        }
+
         [Theory]
         [InlineData("2560x1440", 2560, 1440)]
         [InlineData("1920x1080", 1920, 1080)]

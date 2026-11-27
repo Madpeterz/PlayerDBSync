@@ -53,7 +53,7 @@ namespace PlayerDBSync
 
         // The screen sizes a screenshot can be taken at, picked under Screenshots; the first is the default. The server
         // reads text off the picture at set places, so it is never scaled: the game must be at the size picked. (The
-        // site only takes 2560x1440 for now; a screenshot of another size is refused there until it takes that too.)
+        // site takes the same sizes, its DemoOcrQueue::SCREENS, and reads each with the boxes an admin set for that size.)
         public static readonly IReadOnlyList<ScreenSize> Sizes = [new(2560, 1440), new(1920, 1080), new(3440, 1440)];
         public static ScreenSize DefaultSize => Sizes[0];
 

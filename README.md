@@ -83,6 +83,7 @@ A tool takes the picture; the app uses the first of these that is installed:
 - It is a picture of what's on the screen, so the game must be in front, not minimised or on another virtual desktop. A capture that comes out **black** isn't saved: use windowed or borderless mode, not exclusive full screen.
 - On Wayland, `maim` and `import` only see XWayland windows and usually give black; use `grim`. GNOME and KDE on Wayland don't allow `grim`, so there the screenshot features aren't available.
 - If you unplug or rearrange screens, pick again; a screen that's gone falls back to the whole desktop.
+- Because the whole screen is taken, Demo OCR screenshots are the **screen's** size, not the game's: running the game smaller in a window doesn't help. Pick the screen's size in **Game screen size** (e.g. 3440x1440 for an ultrawide) (see [Demo OCR screenshots](#demo-ocr-screenshots)).
 - The screenshots are saved to `/tmp/PlayerDBSync/Screenshots`, and **Open folder** opens it with `xdg-open`.
 
 ### What's different from Windows
@@ -172,7 +173,7 @@ While syncing, the app checks `request.dat` every half second. On `status = true
 
 The game window must be exactly the size picked in **Game screen size** under the Demo OCR box: **2560x1440** (the default), **1920x1080** or **3440x1440**. The server reads the notice's text from set places on the screenshot, so the app never scales it; if the window is another size it logs the size it found and waits. A new size is used from the next request, while syncing too.
 
-The server only takes 2560x1440 screenshots for now: until it takes the other sizes too, a 1920x1080 or 3440x1440 screenshot is refused there and kept, as under **Rejected** below.
+The server takes all three sizes. It reads each screenshot using the boxes set up on the site for that size, so if a size has no boxes yet, a screenshot of that size is queued but can't be read until they are; the site shows this on the request.
 
 ### Uploading
 
@@ -206,6 +207,7 @@ To keep the settings somewhere else (to try the app without touching your real o
 | *Server rejected … RaidsDB 1.4.0 or newer is needed: update the addon* (or another addon and version) | The files were saved by an addon version older than the server takes. Update the addon; if the old files keep being rejected, use [Clear addon data…](#clearing-addon-data). |
 | No version shown under a folder | The folder isn't an addon folder, or the addon hasn't written a data file with `addon_version` yet. Syncing still works. |
 | *Demo OCR requested but the game window is …, it needs to be 2560x1440 (the size picked under Screenshots)* | Set the game to a window or full screen resolution of the size picked in **Game screen size** (or pick the size the game is at) and click the DemoOCR icon again. |
+| *Demo OCR requested but the screen picked under Capture is …, it needs to be 2560x1440* (Linux) | Linux captures the whole screen, so the screen picked under **Capture** must be that size, whatever size the game runs at. Pick the screen's size in **Game screen size**, or capture a screen of the size needed. |
 | *… the capture came out black (is the game in exclusive full screen? …)* | The app captures the game window without taking over the screen, which shows black while the game is in exclusive full screen. Set the game to windowed or borderless full screen; the request is retried on its own. |
 | *Demo OCR requested but location.dat isn't up to date yet* | The addon isn't writing its location. Check that the DemoOCR feature is enabled in the PlayerDB addon and the game isn't paused or loading. |
 | *Demo OCR: needs the PlayerDB addon's Demos folder* | Update the PlayerDB addon, then play with it enabled until it creates `Demos`, and click **Stop** and **Start**. |
